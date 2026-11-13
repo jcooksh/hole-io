@@ -13,6 +13,10 @@
   --sun: #ffb400;
   --display: "Kenney Future", "Trebuchet MS", system-ui, sans-serif;
   --body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
 }
 
 * { box-sizing: border-box; }
@@ -26,12 +30,16 @@ html, body {
   overscroll-behavior: none;
 }
 
-#view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+#view, #labels, #popups, #hud, .overlay {
+  position: fixed; inset: 0; width: 100%; height: 100%; height: 100dvh;
+}
+#view { display: block; touch-action: none; -webkit-touch-callout: none; }
+button { touch-action: manipulation; }
 
 [hidden] { display: none !important; }
 
 /* ---- in-world labels ---------------------------------------------------- */
-#labels, #popups { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
+#labels, #popups { pointer-events: none; overflow: hidden; }
 
 .label {
   position: absolute; left: 0; top: 0; white-space: nowrap;
@@ -63,10 +71,19 @@ html, body {
 }
 
 /* ---- HUD ---------------------------------------------------------------- */
-#hud { position: fixed; inset: 0; pointer-events: none; padding: max(12px, env(safe-area-inset-top)) 12px 12px; }
+#hud {
+  display: flex; flex-direction: column; pointer-events: none;
+  padding: max(12px, var(--safe-top)) max(12px, var(--safe-right)) max(14px, var(--safe-bottom)) max(12px, var(--safe-left));
+}
+.hud-top {
+  display: grid; align-items: start; gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-areas: "score timer board";
+}
+.hud-bottom { display: flex; align-items: end; justify-content: space-between; gap: 8px; margin-top: auto; }
 
 #timer {
-  position: absolute; left: 50%; top: max(12px, env(safe-area-inset-top)); translate: -50% 0;
+  grid-area: timer; justify-self: center;
   font: 800 30px/1 var(--body); font-variant-numeric: tabular-nums;
   padding: 10px 18px; border-radius: 14px; background: var(--panel);
 }
@@ -74,7 +91,7 @@ html, body {
 @keyframes pulse { 50% { scale: 1.08; } }
 
 #me {
-  position: absolute; left: 12px; top: max(12px, env(safe-area-inset-top)); min-width: 150px;
+  grid-area: score; justify-self: start; min-width: 150px;
   padding: 10px 14px; border-radius: 14px; background: var(--panel);
   font-family: var(--body); font-variant-numeric: tabular-nums;
 }
@@ -88,8 +105,8 @@ html, body {
 #me .bar i { display: block; height: 100%; width: 0; border-radius: 4px; background: #ffd21f; transition: width 0.2s; }
 
 #board {
-  position: absolute; right: 12px; top: max(12px, env(safe-area-inset-top));
-  margin: 0; padding: 8px 10px; list-style: none; min-width: 168px;
+  grid-area: board; justify-self: end; width: max-content; min-width: min(168px, 100%); max-width: 100%;
+  margin: 0; padding: 8px 10px; list-style: none;
   border-radius: 14px; background: var(--panel);
   font-size: 13px; font-variant-numeric: tabular-nums;
 }
@@ -101,10 +118,10 @@ html, body {
 #board li.dead span { opacity: 0.45; text-decoration: line-through; }
 
 #banner {
-  position: absolute; left: 50%; top: 24%; translate: -50% 0; text-align: center;
+  align-self: center; margin-top: clamp(12px, 4vh, 40px); text-align: center; overflow-wrap: anywhere;
   font: 900 40px/1.1 var(--body); color: #fff;
   -webkit-text-stroke: 8px var(--ink); paint-order: stroke fill;
-  opacity: 0; pointer-events: none; white-space: nowrap;
+  opacity: 0;
 }
 #banner.show { animation: banner 1.6s ease-out forwards; }
 #banner.hold { opacity: 1; }
@@ -113,34 +130,35 @@ html, body {
   12% { opacity: 1; scale: 1.1; }
   22% { scale: 1; }
   78% { opacity: 1; }
-  100% { opacity: 0; translate: -50% -18px; }
+  100% { opacity: 0; translate: 0 -18px; }
 }
 
-#feed { position: absolute; left: 12px; bottom: 14px; display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
-#feed div { padding: 5px 10px; border-radius: 999px; background: var(--panel); animation: feed 4s forwards; width: max-content; }
+#feed { display: flex; flex-direction: column; align-items: start; gap: 4px; min-width: 0; font-size: 13px; }
+#feed div { padding: 5px 10px; border-radius: 999px; background: var(--panel); animation: feed 4s forwards; overflow-wrap: anywhere; }
 #feed b { color: var(--c); font-weight: 700; }
 @keyframes feed { 0%, 80% { opacity: 1; } 100% { opacity: 0; } }
 
 #mute {
-  position: absolute; right: 12px; bottom: 14px; pointer-events: auto;
+  flex: none; pointer-events: auto;
   font: 11px var(--display); letter-spacing: 0.05em; color: #fff;
   padding: 9px 12px 7px; border: 0; border-radius: 999px; background: var(--panel); cursor: pointer;
 }
 #mute:hover { background: rgba(16, 26, 40, 0.9); }
 
 #stick {
-  position: fixed; left: 0; top: 0; width: 110px; height: 110px; margin: -55px 0 0 -55px;
+  position: fixed; left: 0; top: 0; width: 116px; height: 116px; translate: -50% -50%;
   border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.6); background: rgba(255, 255, 255, 0.12);
   pointer-events: none;
 }
 #stick i {
-  position: absolute; left: 50%; top: 50%; width: 46px; height: 46px; margin: -23px 0 0 -23px;
+  position: absolute; left: 50%; top: 50%; width: 32px; height: 32px; margin: -16px 0 0 -16px;
   border-radius: 50%; background: rgba(255, 255, 255, 0.85);
 }
 
 /* ---- menus -------------------------------------------------------------- */
 .overlay {
-  position: fixed; inset: 0; display: flex; padding: 16px;
+  display: flex;
+  padding: max(16px, var(--safe-top)) max(16px, var(--safe-right)) max(16px, var(--safe-bottom)) max(16px, var(--safe-left));
   background: radial-gradient(circle at 50% 40%, rgba(10, 20, 34, 0.25), rgba(10, 20, 34, 0.62));
   overflow: auto;
 }
@@ -177,6 +195,7 @@ button:focus-visible { outline: 3px solid var(--sun); outline-offset: 3px; }
 #progress.done { visibility: hidden; }
 
 .how { margin: 14px 0 0; padding: 0; list-style: none; text-align: left; font-size: 14px; line-height: 1.45; color: #48586b; }
+.how-touch { display: none; }
 .how li { padding: 5px 0 5px 22px; position: relative; }
 .how li::before { content: ""; position: absolute; left: 3px; top: 11px; width: 9px; height: 9px; border-radius: 50%; background: var(--ink); }
 .credit { margin: 14px 0 0; font-size: 12px; color: #7a8796; }
@@ -193,21 +212,44 @@ button:focus-visible { outline: 3px solid var(--sun); outline-offset: 3px; }
 #results li.me em { color: #fff; }
 #results li.me i { box-shadow: 0 0 0 2px #fff; }
 
-@media (max-width: 560px) {
+@media (max-width: 560px), (max-height: 520px) {
   #timer { font-size: 22px; padding: 8px 12px; }
-  #me { padding: 8px 10px; min-width: 104px; }
+  #me { padding: 8px 10px; min-width: min(104px, 100%); }
   #me span { font-size: 18px; }
   #me small { display: none; }
   .pop { font-size: 24px; -webkit-text-stroke-width: 6px; }
   .pop.big { font-size: 38px; }
-  #board { font-size: 11px; min-width: 128px; padding: 6px; }
+  #board { font-size: 11px; min-width: min(128px, 100%); padding: 6px; }
   #banner { font-size: 28px; -webkit-text-stroke-width: 6px; }
   .card { padding: 22px 18px 18px; }
 }
+@media (max-width: 460px) {
+  .hud-top {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-areas: "timer board" "score board";
+  }
+  #timer { justify-self: start; }
+}
 @media (max-height: 520px) {
-  .how { display: none; }
+  .how li + li { display: none; }
+  #feed div:nth-last-child(n+3) { display: none; }
   .card { padding: 16px 20px; }
   .tag { margin: 6px 0 12px; }
+  #results { margin-bottom: 10px; }
+  #results li { padding-block: 4px; }
+}
+@media (min-width: 520px) and (max-height: 520px) and (orientation: landscape) {
+  #end .card { max-width: 580px; }
+  #results {
+    display: grid; gap: 2px 8px;
+    grid-template: repeat(4, auto) / repeat(2, minmax(0, 1fr));
+    grid-auto-flow: column;
+  }
+}
+@media (pointer: coarse) {
+  #mute { min-height: 44px; }
+  .how-desktop { display: none; }
+  .how-touch { display: inline; }
 }
 @media (prefers-reduced-motion: reduce) {
   #timer.low { animation: none; }

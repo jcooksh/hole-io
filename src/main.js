@@ -1,16 +1,19 @@
 import * as THREE from 'three';
 import { loadAssets } from './assets.js';
-import { Game, ROUND_TIME } from './game.js';
+import { Game } from './game.js';
 import { Sound } from './audio.js';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('view');
+const stick = $('stick');
+const stickKnob = stick.firstElementChild;
 const hex = (c) => `#${c.toString(16).padStart(6, '0')}`;
 const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 // ---- renderer --------------------------------------------------------------
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-let pixelRatio = Math.min(window.devicePixelRatio || 1, 1.5);
+const touchFirst = matchMedia('(pointer: coarse)').matches;
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: !touchFirst, powerPreference: 'high-performance' });
+let pixelRatio = Math.min(window.devicePixelRatio || 1, touchFirst ? 1 : 1.5);
 renderer.setPixelRatio(pixelRatio);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
@@ -23,7 +26,7 @@ scene.add(new THREE.HemisphereLight(0xffffff, 0x8a94a6, 1.75));
 const sun = new THREE.DirectionalLight(0xfff2dd, 2.1);
 const SUN_DIR = new THREE.Vector3(0.55, 1, 0.38).normalize();
 sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.mapSize.setScalar(touchFirst ? 1024 : 2048);
 sun.shadow.bias = -0.0004;
 sun.shadow.normalBias = 0.35;
 scene.add(sun, sun.target);
@@ -32,15 +35,18 @@ const camera = new THREE.PerspectiveCamera(42, 1, 1, 1600);
 const PITCH = 1.02;
 const aim = camera.clone();
 let camR = 1, shadowExtent = 0, menuAngle = 0.6;
+let viewWidth = 0, viewHeight = 0;
 
 function resize() {
-  const w = window.innerWidth, h = window.innerHeight;
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  if (!w || !h || (w === viewWidth && h === viewHeight)) return;
+  viewWidth = w; viewHeight = h;
   renderer.setSize(w, h, false);
   camera.aspect = aim.aspect = w / h;
   camera.updateProjectionMatrix();
   aim.updateProjectionMatrix();
 }
-window.addEventListener('resize', resize);
+new ResizeObserver(resize).observe(canvas);
 resize();
 
 // ---- state -----------------------------------------------------------------
@@ -55,7 +61,7 @@ const _v = new THREE.Vector3();
 
 function toScreen(x, y, z) {
   _v.set(x, y, z).project(camera);
-  return [(_v.x * 0.5 + 0.5) * window.innerWidth, (-_v.y * 0.5 + 0.5) * window.innerHeight, _v.z < 1];
+  return [(_v.x * 0.5 + 0.5) * viewWidth, (-_v.y * 0.5 + 0.5) * viewHeight, _v.z < 1];
 }
 
 function makeLabels() {
@@ -76,7 +82,7 @@ function updateLabels() {
   game.holes.forEach((h, i) => {
     const el = labels[i];
     const [x, y, ok] = toScreen(h.x, 0.3, h.z - h.shown * (h.isPlayer ? 1.35 : 1.15));
-    const show = h.alive && ok && h.shown > 0.3 && x > -80 && y > -40 && x < window.innerWidth + 80 && y < window.innerHeight + 40;
+    const show = h.alive && ok && h.shown > 0.3 && x > -80 && y > -40 && x < viewWidth + 80 && y < viewHeight + 40;
     el.style.display = show ? '' : 'none';
     if (el.dataset.lv !== String(h.level)) { el.dataset.lv = h.level; el.lastElementChild.textContent = h.level + 1; }
     if (show) el.style.transform = `translate(${x.toFixed(1)}px, ${(y - 8).toFixed(1)}px) translate(-50%, -100%)`;
@@ -155,6 +161,7 @@ function bind() {
   };
   game.on.respawn = (h) => { if (h.isPlayer) { banner('Back in!'); sound.play('maximize_008'); } };
   game.on.over = () => {
+    clearStick();
     const rank = game.ranking(), place = rank.indexOf(game.player) + 1;
     $('endTitle').textContent = place === 1 ? 'You win!' : 'Time!';
     $('endSub').textContent = place === 1
@@ -163,7 +170,7 @@ function bind() {
     $('results').innerHTML = rank.map((h, i) => `<li class="${h.isPlayer ? 'me' : ''}" style="--c:${hex(h.color)}"><em>${i + 1}</em><i></i><span>${esc(h.name)}</span><b>${h.score}</b></li>`).join('');
     sound.play(place === 1 ? 'confirmation_004' : 'select_005');
     $('timer').classList.remove('low');
-    setTimeout(() => { $('end').hidden = false; $('again').focus(); }, 900);
+    setTimeout(() => { $('end').hidden = false; $('again').focus({ preventScroll: true }); }, 900);
   };
 }
 
@@ -172,48 +179,72 @@ function start(playerName) {
   makeLabels();
   $('popups').textContent = ''; $('feed').textContent = '';
   camR = game.player.r; lastSecond = -1; boardTimer = 0; shake = 0;
-  input.stick = null; input.useKeys = false; lastScore = -1;
+  clearStick(); input.keys.clear(); input.useKeys = false; lastScore = -1;
   $('menu').hidden = true; $('end').hidden = true;
   $('hud').hidden = !playerName;
+  updateCamera(0);
   if (playerName) { banner('Go!'); sound.play('maximize_008'); }
 }
 
 // ---- input -----------------------------------------------------------------
 const KEYS = { ArrowUp: [0, -1], KeyW: [0, -1], ArrowDown: [0, 1], KeyS: [0, 1], ArrowLeft: [-1, 0], KeyA: [-1, 0], ArrowRight: [1, 0], KeyD: [1, 0] };
+const STICK_RADIUS = 40, STICK_DEAD_ZONE = 4;
+
+function clearStick() {
+  const st = input.stick;
+  if (!st) return;
+  input.stick = null;
+  stick.hidden = true;
+  if (canvas.hasPointerCapture(st.id)) canvas.releasePointerCapture(st.id);
+}
+
+function cancelInput() {
+  clearStick();
+  input.keys.clear();
+  input.pointer = null;
+}
+
 window.addEventListener('keydown', (e) => {
   if (e.target.tagName === 'INPUT') return;
   if (KEYS[e.code]) { input.keys.add(e.code); input.useKeys = true; e.preventDefault(); }
 });
 window.addEventListener('keyup', (e) => input.keys.delete(e.code));
-window.addEventListener('blur', () => input.keys.clear());
+window.addEventListener('blur', cancelInput);
+window.addEventListener('pagehide', cancelInput);
+document.addEventListener('visibilitychange', () => { if (document.hidden) cancelInput(); });
+screen.orientation?.addEventListener('change', clearStick);
+matchMedia('(orientation: portrait)').addEventListener('change', clearStick);
 
 canvas.addEventListener('pointerdown', (e) => {
-  if (e.pointerType === 'mouse') return;
-  input.stick = { id: e.pointerId, ox: e.clientX, oy: e.clientY, x: 0, y: 0 };
-  input.useKeys = false;
-  const s = $('stick');
-  s.hidden = false; s.style.left = `${e.clientX}px`; s.style.top = `${e.clientY}px`;
-  s.firstElementChild.style.transform = '';
+  if (e.pointerType === 'mouse' || e.button !== 0 || game?.mode !== 'playing' || input.stick) return;
   canvas.setPointerCapture(e.pointerId);
+  input.pointer = null;
+  input.useKeys = false;
+  input.stick = { id: e.pointerId, ox: e.clientX, oy: e.clientY, x: 0, y: 0 };
+  stick.style.left = `${e.clientX}px`; stick.style.top = `${e.clientY}px`;
+  stickKnob.style.transform = '';
+  stick.hidden = false;
 });
 window.addEventListener('pointermove', (e) => {
-  if (e.pointerType === 'mouse') { input.pointer = [e.clientX, e.clientY]; input.useKeys = false; }
+  if (e.pointerType === 'mouse' && !input.stick) { input.pointer = [e.clientX, e.clientY]; input.useKeys = false; }
 });
 canvas.addEventListener('pointermove', (e) => {
-  if (e.pointerType === 'mouse') return;
   const st = input.stick;
   if (!st || st.id !== e.pointerId) return;
-  let dx = e.clientX - st.ox, dy = e.clientY - st.oy;
-  const len = Math.hypot(dx, dy), max = 48;
-  if (len > max) { dx *= max / len; dy *= max / len; }
-  st.x = dx / max; st.y = dy / max;
-  $('stick').firstElementChild.style.transform = `translate(${dx}px, ${dy}px)`;
+  const dx = e.clientX - st.ox, dy = e.clientY - st.oy;
+  const distance = Math.hypot(dx, dy);
+  const travelScale = Math.min(STICK_RADIUS, distance) / (distance || 1);
+  const strength = THREE.MathUtils.clamp((distance - STICK_DEAD_ZONE) / (STICK_RADIUS - STICK_DEAD_ZONE), 0, 1);
+  const inputScale = strength / (distance || 1);
+  st.x = dx * inputScale; st.y = dy * inputScale;
+  stickKnob.style.transform = `translate(${dx * travelScale}px, ${dy * travelScale}px)`;
 });
 const endTouch = (e) => {
-  if (input.stick && input.stick.id === e.pointerId) { input.stick = null; $('stick').hidden = true; }
+  if (input.stick?.id === e.pointerId) clearStick();
 };
 canvas.addEventListener('pointerup', endTouch);
 canvas.addEventListener('pointercancel', endTouch);
+canvas.addEventListener('lostpointercapture', endTouch);
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
 const raycaster = new THREE.Raycaster(), _ndc = new THREE.Vector2();
@@ -221,14 +252,14 @@ const GROUND = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 
 function readInput() {
   let x = 0, z = 0;
-  if (input.useKeys && input.keys.size) {
+  if (input.stick) {
+    x = input.stick.x; z = input.stick.y;
+  } else if (input.useKeys && input.keys.size) {
     for (const k of input.keys) { x += KEYS[k][0]; z += KEYS[k][1]; }
     const l = Math.hypot(x, z) || 1; x /= l; z /= l;
-  } else if (input.stick) {
-    x = input.stick.x; z = input.stick.y;
   } else if (input.pointer && !input.useKeys) {
     // Mouse: the hole heads straight for the spot on the ground under the cursor.
-    _ndc.set((input.pointer[0] / window.innerWidth) * 2 - 1, 1 - (input.pointer[1] / window.innerHeight) * 2);
+    _ndc.set((input.pointer[0] / viewWidth) * 2 - 1, 1 - (input.pointer[1] / viewHeight) * 2);
     raycaster.setFromCamera(_ndc, aim);
     if (raycaster.ray.intersectPlane(GROUND, _v)) { game.input.point = true; game.input.tx = _v.x; game.input.tz = _v.z; return; }
   }
@@ -296,7 +327,7 @@ function frame(now) {
   if (raw > 0.026) slow += raw; else if (++fastFrames > 120) { slow = 0; fastFrames = 0; }
   if (slow > 1.5) {
     slow = 0; fastFrames = 0;
-    if (pixelRatio > 1) { pixelRatio = Math.max(1, pixelRatio - 0.5); renderer.setPixelRatio(pixelRatio); resize(); }
+    if (pixelRatio > 1) { pixelRatio = Math.max(1, pixelRatio - 0.5); renderer.setPixelRatio(pixelRatio); }
     else if (sun.shadow.mapSize.x > 1024) { sun.shadow.mapSize.set(1024, 1024); sun.shadow.map?.dispose(); sun.shadow.map = null; }
     else if (sun.castShadow) sun.castShadow = false;
   }
@@ -309,16 +340,37 @@ const syncMute = () => { $('mute').textContent = sound.muted ? 'Sound off' : 'So
 syncMute();
 $('mute').addEventListener('click', () => { sound.setMuted(!sound.muted); syncMute(); });
 
+// Mobile keyboards can shrink the visible viewport without resizing the page.
+const viewport = window.visualViewport;
+const menu = $('menu');
+const nameField = $('name');
+function fitNameForm() {
+  if (!menu.hidden && viewport.scale === 1 && viewport.height < canvas.clientHeight - 1) {
+    menu.style.top = `${viewport.offsetTop}px`;
+    menu.style.height = `${viewport.height}px`;
+    if (document.activeElement === nameField) nameField.scrollIntoView({ block: 'nearest' });
+  } else {
+    menu.style.top = '';
+    menu.style.height = '';
+  }
+}
+if (viewport) {
+  viewport.addEventListener('resize', fitNameForm);
+  viewport.addEventListener('scroll', fitNameForm);
+}
+
 function play() {
   sound.unlock();
   document.activeElement?.blur();   // otherwise WASD would keep typing into the name field
-  const name = $('name').value.trim().slice(0, 14) || 'You';
+  const name = nameField.value.trim().slice(0, 14) || 'You';
   try { localStorage.setItem('gulp-name', name); } catch { /* private mode */ }
   start(name);
 }
-$('play').addEventListener('click', play);
+$('startForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  if (!$('play').disabled) play();
+});
 $('again').addEventListener('click', play);
-$('name').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !$('play').disabled) play(); });
 
 loadAssets((p) => { $('progress').firstElementChild.style.width = `${Math.round(p * 100)}%`; })
   .then((assets) => {

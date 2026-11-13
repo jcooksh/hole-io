@@ -8,7 +8,8 @@ holes are eating the same town, and a bigger hole can swallow a smaller one. Two
 
 Hosted with GitHub Pages: **https://jcooksh.github.io/hole-io/**
 
-Controls: the hole follows your mouse. On a phone, drag. WASD / arrow keys work too.
+- **Touch** — Drag anywhere on the city to steer. Drag farther to move faster, and lift your finger to stop. Play in portrait or landscape.
+- **Mouse and keyboard** — Move the pointer to steer, or use WASD or the arrow keys.
 
 Every bite fills the yellow ring around your hole. A full ring is a level, and each level makes
 the hole bigger. A hole of a higher level can swallow a lower one.

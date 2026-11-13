@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Gulp City</title>
 <meta name="description" content="You are a hole in the ground. Swallow the town, grow, and out-eat the other holes before the clock runs out.">
 <meta name="theme-color" content="#9fd8ff">
@@ -19,33 +19,40 @@
 <div id="popups"></div>
 
 <div id="hud" hidden>
-  <div id="timer">2:00</div>
-  <div id="me">
-    <div><b id="meRank">#1</b><span id="meScore">0</span><small>points</small></div>
-    <div class="lv"><em id="meLevel">Level 1</em><div class="bar"><i id="meBar"></i></div></div>
+  <div class="hud-top">
+    <div id="timer">2:00</div>
+    <div id="me">
+      <div><b id="meRank">#1</b><span id="meScore">0</span><small>points</small></div>
+      <div class="lv"><em id="meLevel">Level 1</em><div class="bar"><i id="meBar"></i></div></div>
+    </div>
+    <ol id="board"></ol>
   </div>
-  <ol id="board"></ol>
   <div id="banner"></div>
-  <div id="feed"></div>
-  <button id="mute" type="button" aria-label="Toggle sound">Sound on</button>
+  <div class="hud-bottom">
+    <div id="feed"></div>
+    <button id="mute" type="button" aria-label="Toggle sound">Sound on</button>
+  </div>
 </div>
 
-<div id="stick" hidden><i></i></div>
+<div id="stick" hidden aria-hidden="true"><i></i></div>
 
 <section id="menu" class="overlay">
-  <div class="card">
+  <form id="startForm" class="card">
     <h1>Gulp City</h1>
     <p class="tag">You are a hole. Swallow the town. Get bigger.</p>
-    <label class="name"><span>Name</span><input id="name" maxlength="14" autocomplete="off" spellcheck="false" value="You"></label>
-    <button id="play" type="button" disabled>Loading…</button>
+    <label class="name"><span>Name</span><input id="name" maxlength="14" autocomplete="off" spellcheck="false" enterkeyhint="go" value="You"></label>
+    <button id="play" type="submit" disabled>Loading…</button>
     <div id="progress"><i></i></div>
     <ul class="how">
-      <li>Your hole follows the mouse. On a phone, drag. WASD / arrows work too.</li>
+      <li>
+        <span class="how-desktop">Move the mouse to steer, or use WASD or the arrow keys.</span>
+        <span class="how-touch">Drag anywhere on the city to steer. Lift your finger to stop.</span>
+      </li>
       <li>Anything smaller than you falls in. Each bite fills the yellow ring; a full ring is a level and a bigger hole.</li>
       <li>Holes of a higher level can swallow you. Return the favour.</li>
     </ul>
     <p class="credit">Models, sounds and font by <a href="https://kenney.nl" target="_blank" rel="noopener">Kenney</a> (CC0).</p>
-  </div>
+  </form>
 </section>
 
 <section id="end" class="overlay" hidden>

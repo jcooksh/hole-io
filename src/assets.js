@@ -250,7 +250,7 @@ function patch(material, kind) {
             vec3 ray = vWPos - cameraPosition;
             float k = cameraPosition.y / max(cameraPosition.y - vWPos.y, 0.001);
             vec2 g = cameraPosition.xz + ray.xz * k;
-            float a = smoothstep(uReveal, uReveal * 0.55, distance(g, uPlayer.xz)) * smoothstep(3.0, 4.5, vWPos.y);
+            float a = (1.0 - smoothstep(uReveal * 0.55, uReveal, distance(g, uPlayer.xz))) * smoothstep(3.0, 4.5, vWPos.y);
             if (hNoise < a * 0.86) discard;
           }`)
         .replace('#include <opaque_fragment>', `float hDepth = clamp(1.0 + vWPos.y / uFade, 0.0, 1.0);
@@ -337,31 +337,34 @@ export function loadTexture(path, { srgb = true, repeat = false } = {}) {
       if (repeat) t.wrapS = THREE.RepeatWrapping;
       t.anisotropy = 4;
       return t;
+    }).catch((error) => {
+      textureCache.delete(path);
+      throw error;
     }));
   }
   return textureCache.get(path);
 }
 
 export function createAssets() {
-  return { models: {}, characters: [], materials: {}, packs: new Map() };
+  return { models: {}, characters: [], materials: {}, packs: new Map(), modelLoads: new Map(), materialLoads: new Map() };
 }
 
-function kitMaterials(assets, kit, jobs) {
-  if (assets.materials[kit]) return assets.materials[kit];
-  const cfg = KITS[kit];
-  const mats = assets.materials[kit] = {
-    object: patch(new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }), 'object'),
-    skinned: patch(new THREE.MeshLambertMaterial({ side: THREE.DoubleSide }), 'object'),
-    ground: patch(new THREE.MeshLambertMaterial({ vertexColors: true }), 'ground'),
-  };
-  if (cfg.tex) {
-    jobs.push(texLoader.loadAsync(`${ASSET_URL}models/${kit}/Textures/colormap.png`).then((t) => {
-      t.flipY = false;
-      t.colorSpace = THREE.SRGBColorSpace;
-      for (const m of Object.values(mats)) { m.map = t; m.needsUpdate = true; }
-    }));
-  }
-  return mats;
+function loadMaterials(assets, kit) {
+  if (assets.materialLoads.has(kit)) return assets.materialLoads.get(kit);
+  const work = (async () => {
+    const map = KITS[kit].tex ? await texLoader.loadAsync(`${ASSET_URL}models/${kit}/Textures/colormap.png`) : null;
+    if (map) { map.flipY = false; map.colorSpace = THREE.SRGBColorSpace; }
+    return assets.materials[kit] = {
+      object: patch(new THREE.MeshLambertMaterial({ map, vertexColors: true, side: THREE.DoubleSide }), 'object'),
+      skinned: patch(new THREE.MeshLambertMaterial({ map, side: THREE.DoubleSide }), 'object'),
+      ground: patch(new THREE.MeshLambertMaterial({ map, vertexColors: true }), 'ground'),
+    };
+  })().catch((error) => {
+    assets.materialLoads.delete(kit);
+    throw error;
+  });
+  assets.materialLoads.set(kit, work);
+  return work;
 }
 
 function register(assets, name, geometry, material, ground) {
@@ -381,30 +384,40 @@ async function loadObj(kit, file) {
   const mtl = await new MTLLoader().setPath(base).loadAsync(`${file}.mtl`);
   mtl.preload();
   // these files carry a leftover "usemap" directive the loader would warn about on every line
-  const text = await fetch(`${base}${file}.obj`).then((r) => r.text());
-  return new OBJLoader().setMaterials(mtl).parse(text.replace(/^usemap.*$/gm, ''));
+  const url = `${base}${file}.obj`;
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Could not load ${url} (${response.status})`);
+  return new OBJLoader().setMaterials(mtl).parse((await response.text()).replace(/^usemap.*$/gm, ''));
 }
 
-// Loads a pack once. Calling it again returns the same promise.
+// A successful pack is kept for the whole visit. Failed downloads can be retried.
 export function loadPack(assets, packName, onProgress) {
   if (assets.packs.has(packName)) return assets.packs.get(packName);
   const pack = PACKS[packName];
-  const texJobs = [], jobs = [];
-  for (const [kit, names] of Object.entries(pack.models || {})) {
-    kitMaterials(assets, kit, texJobs);
-    for (const n of names) if (!assets.models[`${kit}/${n}`]) jobs.push({ kit, file: n });
-  }
-  for (const [kit, file, special] of pack.characters || []) { kitMaterials(assets, kit, texJobs); jobs.push({ kit, file, character: true, special }); }
-  for (const stl of pack.stl || []) jobs.push({ stl });
+  const jobs = Object.entries(pack.models).flatMap(([kit, names]) => names.map((file) => ({ kit, file })));
+  for (const [kit, file, special] of pack.characters || []) jobs.push({ kit, file, character: true, special });
+  for (const stl of pack.stl || []) jobs.push({ kit: 'nature', stl });
   let done = 0;
-  const total = jobs.length + texJobs.length;
-  const tick = () => onProgress && onProgress(++done / total);
-  texJobs.forEach((j) => j.then(tick));
+  const work = Promise.all(jobs.map((job) => loadModel(assets, job).then(() => onProgress?.(++done / jobs.length))))
+    .then(() => {
+      assets.characters.sort((a, b) => a.name.localeCompare(b.name));
+      return assets;
+    }).catch((error) => {
+      assets.packs.delete(packName);
+      throw error;
+    });
+  assets.packs.set(packName, work);
+  return work;
+}
 
-  const work = Promise.all(jobs.map(async ({ kit, file, character, special, stl }) => {
+function loadModel(assets, { kit, file, character, special, stl }) {
+  const name = stl ? stl.name : `${kit}/${file}`;
+  if (assets.modelLoads.has(name)) return assets.modelLoads.get(name);
+  const work = (async () => {
+    const materials = loadMaterials(assets, kit);
     if (stl) {
       // Landmark scans: one plain mesh each, laid on its base and painted a single colour.
-      const geo = await new STLLoader().loadAsync(`${ASSET_URL}${stl.file}`);
+      const [geo, mats] = await Promise.all([new STLLoader().loadAsync(`${ASSET_URL}${stl.file}`), materials]);
       if (stl.up === 'z') geo.rotateX(-Math.PI / 2);
       geo.computeBoundingBox();
       const size = geo.boundingBox.getSize(new THREE.Vector3()), c = geo.boundingBox.getCenter(new THREE.Vector3());
@@ -416,14 +429,16 @@ export function loadPack(assets, packName, onProgress) {
       for (let i = 0; i < n; i++) { col[i * 3] = tint.r; col[i * 3 + 1] = tint.g; col[i * 3 + 2] = tint.b; }
       geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
       geo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(n * 2), 2));
-      kitMaterials(assets, 'nature', texJobs);
-      register(assets, stl.name, geo, assets.materials.nature.object, false);
-      tick();
+      register(assets, name, geo, mats.object, false);
       return;
     }
-    const mats = assets.materials[kit], name = `${kit}/${file}`;
+    const obj = KITS[kit].format === 'obj';
+    const [model, mats] = await Promise.all([
+      obj ? loadObj(kit, file) : gltfLoader.loadAsync(`${ASSET_URL}models/${kit}/${file}.glb`),
+      materials,
+    ]);
     if (character) {
-      const gltf = await gltfLoader.loadAsync(`${ASSET_URL}models/${kit}/${file}.glb`);
+      const gltf = model;
       gltf.scene.traverse((o) => {
         if (o.isMesh) { o.material = mats.skinned; o.castShadow = true; }
       });
@@ -438,19 +453,18 @@ export function loadPack(assets, packName, onProgress) {
       });
       const clips = {};
       for (const c of gltf.animations) clips[c.name] = c;
-      if (!assets.characters.some((c) => c.name === name)) assets.characters.push({ name, scene: gltf.scene, clips, bounds, special: !!special });
+      assets.characters.push({ name, scene: gltf.scene, clips, bounds, special: !!special });
     } else {
-      const scene = KITS[kit].format === 'obj' ? await loadObj(kit, file) : (await gltfLoader.loadAsync(`${ASSET_URL}models/${kit}/${file}.glb`)).scene;
+      const scene = obj ? model : model.scene;
       const ground = GROUND.has(name);
       const geometry = mergeScene(scene, SCALE_OVERRIDE[name] || KITS[kit].scale, false);
       register(assets, name, geometry, mats[ground ? 'ground' : 'object'], ground);
     }
-    tick();
-  })).then(() => Promise.all(texJobs)).then(() => {
-    assets.characters.sort((a, b) => a.name.localeCompare(b.name));
-    return assets;
+  })().catch((error) => {
+    assets.modelLoads.delete(name);
+    throw error;
   });
-  assets.packs.set(packName, work);
+  assets.modelLoads.set(name, work);
   return work;
 }
 

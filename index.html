@@ -31,6 +31,7 @@
   <div id="banner"></div>
   <div class="hud-bottom">
     <div id="feed"></div>
+    <a id="assetCredits" href="./credits.html" target="_blank" rel="noopener" hidden>Image credits</a>
     <button id="mute" type="button" aria-label="Toggle sound">Sound on</button>
   </div>
 </div>
@@ -46,6 +47,7 @@
     <fieldset id="maps" class="maps"><legend>Map</legend></fieldset>
     <button id="play" type="submit" disabled>Loading…</button>
     <div id="progress"><i></i></div>
+    <p id="mapLoadStatus" class="tag" role="status" hidden>Could not load this map.</p>
     <ul class="how">
       <li>
         <span class="how-desktop">Move the mouse to steer, or use WASD or the arrow keys.</span>
@@ -55,7 +57,7 @@
       <li>Eat the city and you move up a size: the countryside, the Earth, the solar system, the galaxy and beyond.</li>
       <li>No clock. A hole of a higher level can swallow you, and then it is over.</li>
     </ul>
-    <p class="credit">Models, sounds and font by <a href="https://kenney.nl" target="_blank" rel="noopener">Kenney</a> (CC0).</p>
+    <p class="credit">Models, sounds and font by <a href="https://kenney.nl" target="_blank" rel="noopener">Kenney</a>. <a href="./credits.html" target="_blank" rel="noopener">Asset credits</a></p>
   </form>
 </section>
 
@@ -65,6 +67,13 @@
     <p class="tag" id="endSub"></p>
     <ol id="results"></ol>
     <button id="again" type="button">Play again</button>
+  </div>
+</section>
+
+<section id="stageLoad" class="overlay" aria-labelledby="stageLoadTitle" hidden>
+  <div class="card">
+    <h2 id="stageLoadTitle" role="status"></h2>
+    <button id="retryStage" type="button" hidden>Retry stage</button>
   </div>
 </section>
 

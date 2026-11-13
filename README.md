@@ -55,5 +55,5 @@ Then open http://localhost:8000.
 
 ## Credits
 
-All art, sound and the display font are CC0 assets by [Kenney](https://kenney.nl). See
-[CREDITS.md](CREDITS.md) for the full list.
+See [CREDITS.md](CREDITS.md) for the model kits, sounds, font and textures, and the
+[image credits](https://jcooksh.github.io/hole-io/credits.html) for the space imagery.

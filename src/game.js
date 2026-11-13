@@ -294,7 +294,7 @@ export class Game {
   }
 
   placeHole(h) {
-    let best = null, bestD = -1;
+    let best = null, bestD = -Infinity;
     for (let k = 0; k < 16; k++) {
       let x, z;
       if (this.kind === 'globe') { x = (this.rnd() - 0.5) * this.wrapX; z = (this.rnd() - 0.5) * this.zMax * 1.5; }
@@ -444,7 +444,8 @@ export class Game {
   }
 
   addScore(h, pts, o) {
-    h.score += pts; h.xp += pts; h.eaten++;
+    h.score += pts; h.xp += pts;
+    if (pts > 0) h.eaten++;
     // Rivals may get ahead of the player, but only by a few levels: no runaway giants.
     if (!h.isPlayer && this.mode === 'playing') h.xp = Math.min(h.xp, this.xpFor(Math.min(MAX_LEVEL, this.player.level + 3)) + 1);
     const before = h.level;
@@ -465,7 +466,7 @@ export class Game {
     const base = this.boss ? LEVEL_XP[MAX_LEVEL] : FINISH_XP;
     if (base * this.xpScale - p.xp > avail * 0.8) {
       this.xpScale = Math.max(0.02, (p.xp + avail * 0.8) / base);
-      for (const h of this.holes) if (h.alive) this.setLevel(h);
+      for (const h of this.holes) if (h.alive && !h.isPlayer) this.setLevel(h);
       this.addScore(p, 0, null);
     }
   }
@@ -647,7 +648,7 @@ export class Game {
   eatObjects(h) {
     const R = h.r, lim = R * FIT, ground = this.kind === 'ground';
     this.near(h.x, h.z, R * 2.4 + 1, (o) => {
-      if (o.state !== 0) return;
+      if (o.state !== 0 || this.mode === 'transition') return;
       const fits = o.rf <= lim && (!o.boss || (h.isPlayer && h.level === MAX_LEVEL));
       this.sep(h.x, h.z, o.x, o.z);
       const reach = R - o.rf * 0.4, dx = _dx, dz = _dz, d2 = dx * dx + dz * dz;
@@ -698,7 +699,7 @@ export class Game {
         o.spin += (2 + 7 / (1 + o.h * 0.2)) * dt;
         o.tilt = Math.min(o.tiltMax, o.tilt + o.spin * dt);
         // squeeze through the opening gradually as it sinks, not all at once
-        const sink = Math.min(1, -o.y / Math.max(1.5, o.h * 0.4));
+        const sink = clamp(-o.y / Math.max(1.5, o.h * 0.4), 0, 1);
         o.sxz = 1 + (o.fit - 1) * sink * sink * (3 - 2 * sink);
         done = o.y < end - o.h;
       } else {
@@ -737,6 +738,7 @@ export class Game {
           this.on.swallow(a, b, loot);
           if (b.isPlayer) { if (this.mode === 'playing') { this.mode = 'lost'; this.on.lost(a); } return; }
           this.addScore(a, loot, null);
+          if (this.mode === 'transition') return;
         }
       }
     }
@@ -804,9 +806,9 @@ export class Game {
   // ---- frame -------------------------------------------------------------
   update(dt) {
     this.frameNo++; this.clock += dt;
-    const active = this.mode === 'playing' || this.mode === 'idle';
     if (this.mode === 'transition') this.collapse(dt);
     for (const h of this.holes) {
+      const active = this.mode === 'playing' || this.mode === 'idle';
       if (!h.alive) {
         h.shown = Math.max(0, h.shown - dt * Math.max(4, h.shown * 6)); h.grow = 0;
         if (active && !h.isPlayer && (h.respawn -= dt) <= 0) { this.placeHole(h); this.on.respawn(h); }
@@ -838,7 +840,7 @@ export class Game {
       }
       this.syncHole(h);
     }
-    if (active) this.eatHoles();
+    if (this.mode === 'playing' || this.mode === 'idle') this.eatHoles();
     if (this.mode === 'playing' && (this.starveT -= dt) <= 0) { this.starveT = 3; this.starveCheck(); }
     this.updateLeaning(dt);
     this.updateFalling(dt);

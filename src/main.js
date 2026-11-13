@@ -166,13 +166,21 @@ function feed(html) {
   setTimeout(() => el.remove(), 4000);
 }
 
-let boardTimer = 0, lastScore = -1, leader = null;
+let boardTimer = 0, lastScore = -1, lastLevel = -1, lastProgress = -1, leader = null;
 function updateHud(dt) {
-  if (game.player.score !== lastScore) {
-    lastScore = game.player.score;
+  const { score, level } = game.player;
+  const progress = Math.round(game.progress(game.player) * 100);
+  if (score !== lastScore) {
+    lastScore = score;
     $('meScore').textContent = lastScore;
-    $('meLevel').textContent = `Level ${game.player.level + 1}`;
-    $('meBar').style.width = `${Math.round(game.progress(game.player) * 100)}%`;
+  }
+  if (level !== lastLevel) {
+    lastLevel = level;
+    $('meLevel').textContent = `Level ${level + 1}`;
+  }
+  if (progress !== lastProgress) {
+    lastProgress = progress;
+    $('meBar').style.width = `${progress}%`;
   }
   boardTimer -= dt;
   if (boardTimer > 0) return;
@@ -197,7 +205,12 @@ function bind() {
     else sound.play(o.rf < 0.8 ? 'drop_001' : o.rf < 2 ? 'drop_002' : 'drop_003', { rate, gain: 0.75, gap: 0.035 });
   };
   game.on.sizeUp = (h) => { banner(`Level ${h.level + 1}!`); sound.play('confirmation_002', { gain: 0.8 }); boardTimer = 0; };
-  game.on.bossReady = (boss) => { setTimeout(() => banner(`Big enough. Swallow ${boss.name}!`), 1400); };
+  game.on.bossReady = (boss) => {
+    const player = game.player;
+    setTimeout(() => {
+      if (game.player === player && game.mode === 'playing') banner(`Big enough. Swallow ${boss.name}!`);
+    }, 1400);
+  };
   game.on.swallow = (a, b, gain) => {
     feed(`<b style="--c:${hex(a.color)}">${esc(a.name)}</b> swallowed <b style="--c:${hex(b.color)}">${esc(b.name)}</b>`);
     if (b.isPlayer) { sound.play('error_006'); shake = 1; }
@@ -244,39 +257,53 @@ function applySky() {
 }
 
 function enterStage(index, playerName, carry) {
-  run.stage = index;
   game.build(buildStage(assets, index, { theme: run.theme }, (Math.random() * 2 ** 31) | 0), index, playerName, carry);
+  run.stage = index;
   applySky();
   makeLabels();
   tagged = []; tagTimer = 0;
   $('popups').textContent = ''; $('feed').textContent = '';
-  camR = game.player.r; boardTimer = 0; shake = 0; lastScore = -1;
+  camR = game.player.r; boardTimer = 0; shake = 0; leader = null;
   clearStick(); input.keys.clear(); input.useKeys = false;
   $('stageNo').textContent = `Stage ${index + 1} / ${STAGES.length}`;
   $('stageName').textContent = game.stage.name;
+  $('assetCredits').hidden = index < 2;
   updateCamera(0);
   // fetch the next world in the background so the hand-over is instant
   if (playerName && index + 1 < STAGES.length) prepareStage(assets, index + 1, { theme: run.theme }).catch(() => {});
 }
 
-async function nextStage(index) {
+async function nextStage(index, carry = { score: game.player.score, eaten: game.player.eaten }) {
+  if (run.busy) return;
   if (index >= STAGES.length) {
     showEnd('You ate everything', 'City, planet, galaxy, universe, and whatever was outside that. Nothing is left.');
     return;
   }
+  run.busy = true;
   const fade = $('fade');
+  const overlay = $('stageLoad'), title = $('stageLoadTitle'), retry = $('retryStage');
+  title.textContent = `Loading ${STAGES[index].name}…`;
+  retry.hidden = true;
+  const showLoading = setTimeout(() => { overlay.hidden = false; }, 600);
   fade.classList.add('on');
-  const carry = { score: game.player.score, eaten: game.player.eaten };
   try {
     await Promise.all([prepareStage(assets, index, { theme: run.theme }), new Promise((r) => setTimeout(r, 450))]);
     enterStage(index, run.name, carry);
+    overlay.hidden = true;
+    fade.classList.remove('on');
     banner(`Stage ${index + 1}: ${game.stage.name}`);
     sound.play('maximize_008');
   } catch (err) {
     console.error(err);
-    showEnd('Could not load the next stage', 'Check your connection and try again.');
+    title.textContent = `Could not load ${STAGES[index].name}`;
+    retry.onclick = () => nextStage(index, carry);
+    retry.hidden = false;
+    overlay.hidden = false;
+    retry.focus({ preventScroll: true });
+  } finally {
+    clearTimeout(showLoading);
+    run.busy = false;
   }
-  fade.classList.remove('on');
 }
 
 async function start(playerName) {
@@ -479,10 +506,6 @@ function play() {
   try { localStorage.setItem('gulp-name', name); } catch { /* private mode */ }
   start(name);
 }
-$('startForm').addEventListener('submit', (e) => {
-  e.preventDefault();
-  if (!$('play').disabled) play();
-});
 $('again').addEventListener('click', play);
 
 const showProgress = (p) => { $('progress').firstElementChild.style.width = `${Math.round(p * 100)}%`; };
@@ -490,23 +513,38 @@ const showProgress = (p) => { $('progress').firstElementChild.style.width = `${M
 // Map picker. Choosing a map loads it and shows it behind the menu, bots already at work.
 try { const id = localStorage.getItem('gulp-map'); run.theme = THEMES.find((t) => t.id === id) || THEMES[0]; } catch { /* private mode */ }
 let loadToken = 0;
+let mapReady = false;
+const playButton = $('play');
+const mapLoadStatus = $('mapLoadStatus');
+$('startForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  if (playButton.disabled) return;
+  if (mapReady) play();
+  else showMap(run.theme);
+});
 async function showMap(theme) {
   const token = ++loadToken;
   run.theme = theme;
   try { localStorage.setItem('gulp-map', theme.id); } catch { /* private mode */ }
-  $('play').disabled = true; $('play').textContent = 'Loading…';
+  mapReady = false;
+  playButton.disabled = true; playButton.textContent = 'Loading…';
+  mapLoadStatus.hidden = true;
   $('progress').classList.remove('done'); showProgress(0);
   try {
-    await prepareStage(assets, 0, { theme }, showProgress);
+    await prepareStage(assets, 0, { theme }, (p) => { if (token === loadToken) showProgress(p); });
     if (token !== loadToken) return;          // a different map was picked meanwhile
     if (!game) { game = new Game(scene, assets); bind(); game.renderer = renderer; game.camera = camera; window.__game = game; window.__stage = nextStage; }
     enterStage(0, null, null);
-    $('play').disabled = false; $('play').textContent = 'Play';
+    mapReady = true;
+    playButton.textContent = 'Play';
   } catch (err) {
     console.error(err);
-    if (token === loadToken) $('play').textContent = 'Could not load';
+    if (token !== loadToken) return;
+    mapLoadStatus.hidden = false;
+    playButton.textContent = 'Retry';
   }
-  if (token === loadToken) $('progress').classList.add('done');
+  playButton.disabled = false;
+  $('progress').classList.add('done');
 }
 for (const theme of THEMES) {
   const label = document.createElement('label');

@@ -1,8 +1,7 @@
 # Credits
 
-Every model, texture, sound and font in this game is a public-domain (CC0 1.0) asset made by
-[Kenney](https://kenney.nl). Nothing was drawn or recorded for this project. The packs were
-downloaded from Kenney's pages on OpenGameArt:
+The modern city's model kits, sound effects and display font are public-domain (CC0 1.0) assets by
+[Kenney](https://kenney.nl). The packs were downloaded from Kenney's pages on OpenGameArt.
 
 | Pack | Used for | Source |
 | --- | --- | --- |
@@ -33,17 +32,12 @@ The worlds after the city use these extra sources.
 | NASA Blue Marble | the Earth's surface | NASA Earth Observatory, taken from the example images of the `three-globe` package | Public domain |
 | Natural Earth 1:110m countries | country outlines you can eat | https://www.naturalearthdata.com via the `world-atlas` package | Public domain |
 | Solar System Scope textures | Sun, planets, moons, Saturn's rings, star background | https://www.solarsystemscope.com/textures/ | CC BY 4.0 |
-| ESA/Hubble images | nebulae, galaxies, galaxy clusters, deep field | https://esahubble.org/images/ (ids below) | CC BY 4.0, credit NASA/ESA/Hubble |
+| ESA/Hubble images | nebulae, galaxies, galaxy clusters, deep field | [Image credits](https://jcooksh.github.io/hole-io/credits.html) | CC BY 4.0 |
 | Pyramid of Khufu (3D model) by Drummyfish | landmark | https://commons.wikimedia.org/wiki/File:Pyramid_of_Khufu.stl | CC0 |
 | Big Ben, Arc de Triomphe, Empire State Building (3D models) by Microsoft | landmarks | https://commons.wikimedia.org/wiki/File:Big_Ben.stl , File:Arc_de_Triomphe.stl , File:Empire_State_Building_(simplified).stl | CC BY 4.0 |
 
-Hubble image ids used (each at `https://esahubble.org/images/<id>/`): heic0109a, heic0206c, heic0305a,
-heic0406a, heic0414a, heic0503a, heic0506a, heic0515a, heic0601a, heic0602a, heic0604a, heic0615a,
-heic0707a, heic0709a, heic0719a, heic0817a, heic0822a, heic0910h, heic1107a, heic1302a, heic1310a,
-heic1501a, heic1509a, heic1608a, opo0328a, opo0501a, opo0624a, opo9941a, potw1036a, potw1113a.
-
-Changes made: images were resized and re-compressed; the planet and star textures were scaled to
-1024 px; country outlines were converted from TopoJSON to a compact JSON file. The landmark models
+Images were resized and recompressed. Planet textures are 1024 px wide and the starfield is 2048 px wide.
+Country outlines were converted from TopoJSON to a compact JSON file. The landmark models
 are the original STL files. Towns and cities in the countryside stage are assembled in code from
 the Kenney building models, and so are the castle keeps and colony towers on the two extra maps.
 

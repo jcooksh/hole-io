@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { createAssets } from './assets.js';
 import { Game } from './game.js';
 import { STAGES, prepareStage, buildStage } from './stages.js';
+import { THEMES } from './maps.js';
 import { Sound } from './audio.js';
 
 const $ = (id) => document.getElementById(id);
@@ -56,7 +57,7 @@ const sound = new Sound();
 const assets = createAssets();
 let game = null;
 // one playthrough: which map, which stage, when it started
-const run = { name: 'You', theme: null, stage: 0, startedAt: 0, busy: false };
+const run = { name: 'You', theme: THEMES[0], stage: 0, startedAt: 0, busy: false };
 let shadowsOK = true;
 const input = { pointer: null, stick: null, keys: new Set(), useKeys: false };
 
@@ -206,12 +207,12 @@ function bind() {
   game.on.lost = (by) => {
     clearStick();
     banner(`Swallowed by ${by.name}!`, true);
-    showEnd('Swallowed!', `${by.name} ate you in stage ${run.stage + 1}, ${STAGES[run.stage].name}.`);
+    showEnd('Swallowed!', `${by.name} ate you in stage ${run.stage + 1}, ${game.stage.name}.`);
   };
   // The stage is finished: let the hole swallow what is left, then move up a scale.
   game.on.stageDone = (index) => {
     clearStick();
-    banner(STAGES[index].done, true);
+    banner(game.stage.done, true);
     sound.play('confirmation_004');
     shake = 1;
     setTimeout(() => nextStage(index + 1), 2500);
@@ -223,7 +224,7 @@ function showEnd(title, sub) {
   $('endTitle').textContent = title;
   $('endSub').textContent = sub;
   $('results').innerHTML = [
-    ['Stage reached', `${run.stage + 1} of ${STAGES.length} · ${STAGES[run.stage].name}`],
+    ['Stage reached', `${run.stage + 1} of ${STAGES.length} · ${game.stage.name}`],
     ['Level', p.level + 1], ['Things swallowed', p.eaten], ['Points', p.score],
     ['Time', `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`],
   ].map(([k, v]) => `<li><span>${k}</span><b>${v}</b></li>`).join('');
@@ -252,7 +253,7 @@ function enterStage(index, playerName, carry) {
   camR = game.player.r; boardTimer = 0; shake = 0; lastScore = -1;
   clearStick(); input.keys.clear(); input.useKeys = false;
   $('stageNo').textContent = `Stage ${index + 1} / ${STAGES.length}`;
-  $('stageName').textContent = STAGES[index].name;
+  $('stageName').textContent = game.stage.name;
   updateCamera(0);
   // fetch the next world in the background so the hand-over is instant
   if (playerName && index + 1 < STAGES.length) prepareStage(assets, index + 1, { theme: run.theme }).catch(() => {});
@@ -269,7 +270,7 @@ async function nextStage(index) {
   try {
     await Promise.all([prepareStage(assets, index, { theme: run.theme }), new Promise((r) => setTimeout(r, 450))]);
     enterStage(index, run.name, carry);
-    banner(`Stage ${index + 1}: ${STAGES[index].name}`);
+    banner(`Stage ${index + 1}: ${game.stage.name}`);
     sound.play('maximize_008');
   } catch (err) {
     console.error(err);
@@ -485,19 +486,34 @@ $('startForm').addEventListener('submit', (e) => {
 $('again').addEventListener('click', play);
 
 const showProgress = (p) => { $('progress').firstElementChild.style.width = `${Math.round(p * 100)}%`; };
-prepareStage(assets, 0, { theme: run.theme }, showProgress)
-  .then(() => {
-    game = new Game(scene, assets);
-    bind();
-    enterStage(0, null, null);     // the menu shows a live city with the bots already at work
-    $('progress').classList.add('done');
-    $('play').disabled = false;
-    $('play').textContent = 'Play';
-    game.renderer = renderer; game.camera = camera;
-    window.__game = game; window.__stage = nextStage;     // handy when testing a later stage
-  })
-  .catch((err) => {
+
+// Map picker. Choosing a map loads it and shows it behind the menu, bots already at work.
+try { const id = localStorage.getItem('gulp-map'); run.theme = THEMES.find((t) => t.id === id) || THEMES[0]; } catch { /* private mode */ }
+let loadToken = 0;
+async function showMap(theme) {
+  const token = ++loadToken;
+  run.theme = theme;
+  try { localStorage.setItem('gulp-map', theme.id); } catch { /* private mode */ }
+  $('play').disabled = true; $('play').textContent = 'Loading…';
+  $('progress').classList.remove('done'); showProgress(0);
+  try {
+    await prepareStage(assets, 0, { theme }, showProgress);
+    if (token !== loadToken) return;          // a different map was picked meanwhile
+    if (!game) { game = new Game(scene, assets); bind(); game.renderer = renderer; game.camera = camera; window.__game = game; window.__stage = nextStage; }
+    enterStage(0, null, null);
+    $('play').disabled = false; $('play').textContent = 'Play';
+  } catch (err) {
     console.error(err);
-    $('play').textContent = 'Could not load';
-    $('progress').classList.add('done');
-  });
+    if (token === loadToken) $('play').textContent = 'Could not load';
+  }
+  if (token === loadToken) $('progress').classList.add('done');
+}
+for (const theme of THEMES) {
+  const label = document.createElement('label');
+  label.innerHTML = `<input type="radio" name="map" value="${theme.id}"><span><b>${theme.name}</b><small>${theme.blurb}</small></span>`;
+  const radio = label.firstElementChild;
+  radio.checked = theme === run.theme;
+  radio.addEventListener('change', () => { if (radio.checked) showMap(theme); });
+  $('maps').appendChild(label);
+}
+showMap(run.theme);

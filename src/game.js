@@ -189,7 +189,8 @@ export class Game {
       parent.add(mesh);
       list.forEach((p, idx) => {
         const s = p.s || 1;
-        const rf = p.rf || Math.max(0.3, model.footprint * s + 0.03 * model.height * s);
+        // nothing may be too big for a maxed-out hole, or a stage could never be cleared
+        const rf = p.rf || Math.min(11.5, Math.max(0.3, model.footprint * s + 0.03 * model.height * s));
         const o = this.makeObject(p, rf, model.halfDiag * s, model.height * s, model.footprint * s);
         o.mesh = mesh; o.idx = idx; o.s = s;
         if (p.color !== undefined) mesh.setColorAt(idx, _color.set(p.color));
@@ -213,7 +214,9 @@ export class Game {
     }
 
     for (const spec of stage.people || []) {
-      const pool = spec.cast ? characters.filter((c) => spec.cast.includes(c.name)) : characters.filter((c) => !c.special);
+      const cast = spec.cast || stage.cast;
+      let pool = cast ? characters.filter((c) => cast.includes(c.name)) : characters.filter((c) => !c.special);
+      if (!pool.length) pool = characters;
       const ch = pool[Math.floor(rnd() * pool.length)];
       const node = cloneSkinned(ch.scene);
       this.root.add(node);

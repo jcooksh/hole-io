@@ -34,11 +34,17 @@ const KITS = {
   skate: { scale: 2.6, tex: true },
   pets: { scale: 0.6, tex: true },
   pirate: { scale: 0.08, tex: true },
+  hexagon: { scale: 12, tex: true },
+  castle: { scale: 8, tex: true },
+  fantasy: { scale: 2.6, tex: true },
+  station: { scale: 2.2, tex: true },
+  spacekit: { scale: 1, tex: false, format: 'obj' },
 };
 
 const GROUND = new Set([
   'roads/road-straight', 'roads/road-crossroad', 'roads/road-intersection', 'roads/road-bend',
   'roads/road-crossing', 'roads/tile-low', 'nature/ground_grass', 'skate/floor-concrete',
+  'fantasy/road', 'spacekit/metalTile', 'spacekit/groundTile', 'spacekit/groundTileRough',
 ]);
 
 const SCALE_OVERRIDE = {
@@ -51,6 +57,21 @@ const SCALE_OVERRIDE = {
   'skate/floor-concrete': 10, 'skate/half-pipe': 5, 'skate/ramp': 5, 'skate/steps': 5, 'skate/structure-platform': 5,
   'skate/obstacle-box': 4, 'skate/rail-high': 4, 'skate/fence': 4, 'skate/skateboard': 1.6, 'skate/scooter': 1.8,
   'pets/animal-cow': 0.95, 'pets/animal-pig': 0.7, 'pets/animal-cat': 0.5, 'pets/animal-bunny': 0.45, 'pets/animal-chick': 0.4,
+  // medieval map
+  'fantasy/road': 10,
+  'hexagon/unit-house': 14, 'hexagon/unit-mansion': 14, 'hexagon/unit-mill': 14, 'hexagon/unit-tower': 14, 'hexagon/unit-wall-tower': 14, 'hexagon/unit-tree': 10,
+  'castle/siege-ballista': 4, 'castle/siege-catapult': 4, 'castle/siege-ram': 4, 'castle/siege-tower': 4, 'castle/siege-trebuchet': 4,
+  'castle/tree-large': 5, 'castle/tree-small': 5, 'castle/tree-log': 4, 'castle/tree-trunk': 4, 'castle/rocks-large': 4, 'castle/rocks-small': 3.5,
+  'castle/flag': 5, 'castle/flag-pennant': 5, 'castle/flag-wide': 5, 'castle/flag-banner-long': 3,
+  'pirate/barrel': 0.75, 'pirate/crate': 0.85, 'pirate/crate-bottles': 0.85, 'pirate/chest': 0.7, 'pirate/cannon': 1, 'pirate/cannon-mobile': 1,
+  'pirate/tower-complete-large': 1.65, 'pirate/tower-complete-small': 1.65, 'pirate/tower-watch': 1.65, 'pirate/flag-high': 1.2,
+  'pirate/flag-high-pennant': 1.2, 'pirate/rocks-a': 1, 'pirate/structure-platform': 1.4,
+  // colony map
+  'spacekit/console': 0.4, 'spacekit/consoleScreen': 0.4, 'spacekit/laserSabel': 0.4, 'spacekit/robot': 0.55,
+  'spacekit/rocks': 0.45, 'spacekit/rocksOre': 0.45, 'spacekit/rocksSmall': 0.3, 'spacekit/rocksTall': 0.5, 'spacekit/rocksTallOre': 0.5,
+  'spacekit/spaceCraft1': 0.3, 'spacekit/spaceCraft2': 0.3, 'spacekit/spaceCraft3': 0.3, 'spacekit/spaceCraft4': 0.3, 'spacekit/spaceCraft5': 0.3, 'spacekit/spaceCraft6': 0.3,
+  'spacekit/station': 2, 'spacekit/stationLarge': 2.2, 'spacekit/meteorHalf': 0.6, 'spacekit/satelliteDish': 0.8, 'spacekit/satelliteDishAntenna': 0.8,
+  'spacekit/pipeStand': 0.6, 'spacekit/metalFence': 0.6, 'spacekit/barrelLarge': 0.8, 'spacekit/spaceCraftStand': 0.7,
 };
 
 const person = (n) => ['characters', `character-${n}`];
@@ -114,6 +135,39 @@ PACKS.earth = {
     { name: 'lm/arc', file: 'earth/landmarks/arc.stl', size: 1.5, color: 0xe6dcc8, up: 'z' },
     { name: 'lm/empire', file: 'earth/landmarks/empire.stl', size: 2.6, color: 0xb9c0c8, up: 'z' },
   ],
+};
+// the two alternative first maps
+PACKS.medieval = {
+  models: {
+    hexagon: ['archery', 'cabin', 'castle', 'farm', 'house', 'market', 'mill', 'mine', 'sheep', 'smelter', 'tower', 'village', 'watermill', 'wizard-tower']
+      .map((n) => `building-${n}`).concat(['unit-house', 'unit-mansion', 'unit-mill', 'unit-tower', 'unit-tree', 'unit-wall-tower']),
+    castle: ['tower-square-base', 'tower-square-mid', 'tower-square-mid-windows', 'tower-square-mid-door', 'tower-square-top-roof',
+      'tower-square-top-roof-high', 'tower-square-top-roof-high-windows', 'wall', 'flag', 'flag-banner-long', 'flag-pennant', 'flag-wide',
+      'siege-ballista', 'siege-catapult', 'siege-ram', 'siege-tower', 'siege-trebuchet', 'tree-large', 'tree-small', 'tree-log', 'tree-trunk',
+      'rocks-large', 'rocks-small'],
+    fantasy: ['cart', 'cart-high', 'stall', 'stall-green', 'stall-red', 'stall-bench', 'lantern', 'hedge', 'hedge-large', 'fence',
+      'fountain-round-detail', 'fountain-square-detail', 'tree', 'tree-high', 'tree-crooked', 'tree-high-round', 'rock-large', 'rock-small',
+      'rock-wide', 'banner-green', 'banner-red', 'wheel', 'road'],
+    pirate: ['barrel', 'crate', 'crate-bottles', 'chest', 'cannon', 'cannon-mobile', 'tower-complete-large', 'tower-complete-small', 'tower-watch',
+      'flag-high', 'flag-high-pennant', 'rocks-a'],
+    nature: ['ground_grass', 'flower_redA', 'flower_yellowA', 'flower_purpleA', 'mushroom_red', 'plant_bush', 'rock_smallA', 'stump_round',
+      'log_stack', 'tent_detailedOpen', 'campfire_stones'],
+    pets: ['animal-dog', 'animal-chick', 'animal-pig', 'animal-cow'],
+  },
+  characters: [person('male-b'), person('female-c'), person('male-e'), person('female-a'), person('male-d'), person('female-e'),
+    [...person('knight'), true], [...person('raider'), true]],
+};
+PACKS.future = {
+  models: {
+    spacekit: ['barrel', 'barrelLarge', 'buildingOpen', 'buildingCorner', 'buildingCorridor', 'console', 'consoleScreen', 'crater', 'craterLarge',
+      'frameHigh', 'groundTile', 'groundTileRough', 'laserSabel', 'metalFence', 'metalStructure', 'metalStructureBottom', 'metalTile',
+      'meteorFull', 'meteorHalf', 'pipeStraight', 'pipeStand', 'portal', 'robot', 'rocks', 'rocksOre', 'rocksSmall', 'rocksTall', 'rocksTallOre',
+      'satelliteDish', 'satelliteDishAntenna', 'satelliteDishLarge', 'spaceCraft1', 'spaceCraft2', 'spaceCraft3', 'spaceCraft4', 'spaceCraft5',
+      'spaceCraft6', 'spaceCraftStand', 'station', 'stationLarge'],
+    station: ['container', 'container-flat', 'container-tall', 'container-wide', 'computer', 'computer-screen', 'computer-system', 'chair',
+      'table-display', 'table-display-planet', 'rocks', 'skip', 'skip-rocks', 'pipe'],
+  },
+  characters: [person('male-a'), person('female-b'), [...person('robot'), true], [...person('alien'), true], [...person('soldier'), true]],
 };
 export const CHARACTER_SCALE = KITS.characters.scale;
 
@@ -325,7 +379,9 @@ async function loadObj(kit, file) {
   const base = `${ASSET_URL}models/${kit}/`;
   const mtl = await new MTLLoader().setPath(base).loadAsync(`${file}.mtl`);
   mtl.preload();
-  return new OBJLoader().setMaterials(mtl).loadAsync(`${base}${file}.obj`);
+  // these files carry a leftover "usemap" directive the loader would warn about on every line
+  const text = await fetch(`${base}${file}.obj`).then((r) => r.text());
+  return new OBJLoader().setMaterials(mtl).parse(text.replace(/^usemap.*$/gm, ''));
 }
 
 // Loads a pack once. Calling it again returns the same promise.

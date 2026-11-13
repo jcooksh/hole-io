@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { generateCity, BOUND, NODES, nodePos, mulberry32 } from './city.js';
 import { loadPack, loadTexture, compose, makeGlobeMaterial, ASSET_URL } from './assets.js';
+import { generateMap, baseColorFor, THEMES } from './maps.js';
 
 const TAU = Math.PI * 2;
 const DEG = Math.PI / 180;
@@ -28,18 +29,22 @@ function scatterer(rnd, bound, taken = []) {
 // ---- 1. city ---------------------------------------------------------------
 const city = {
   id: 'city', name: 'City', done: 'City devoured',
-  async prepare(assets, opts, onProgress) { await loadPack(assets, opts.theme?.pack || 'city', onProgress); },
+  async prepare(assets, opts, onProgress) {
+    const theme = opts.theme || THEMES[0];
+    await loadPack(assets, theme.pack, onProgress);
+    if (theme.prepare) theme.prepare(assets);
+  },
   build(assets, opts, seed) {
-    const c = generateCity(seed, opts.theme);
-    // The lawn tiles and the land around the city share one colour (the kit's grass, toned down a little).
-    const grass = assets.models['nature/ground_grass'].geometry.attributes.color;
-    const tint = assets.materials.nature.ground.color.setRGB(0.8, 0.74, 0.44);
+    const theme = opts.theme || THEMES[0];
+    // the modern city has its own generator; the other maps share one
+    const c = theme.blocks ? generateMap(seed, theme, assets) : generateCity(seed);
     return {
-      kind: 'ground', rnd: c.rnd, bound: BOUND, xp: 0.9,
+      kind: 'ground', rnd: c.rnd, bound: BOUND, xp: 0.9, cast: theme.cast, name: theme.title, done: theme.done,
       ground: c.ground, props: c.props, people: c.people, traffic: c.traffic,
-      baseColor: new THREE.Color(grass.getX(0), grass.getY(0), grass.getZ(0)).multiply(tint),
+      // the lawn tiles and the land around the map share one colour
+      baseColor: baseColorFor(theme, assets),
       spawn: (rnd) => [nodePos(Math.floor(rnd() * NODES)), nodePos(Math.floor(rnd() * NODES))],
-      sky: { color: 0x9fd8ff, fog: [300, 900] },
+      sky: theme.sky || { color: 0x9fd8ff, fog: [300, 900] },
     };
   },
 };
@@ -640,6 +645,6 @@ export const STAGES = [city, region, earth, solar, galaxy, cosmos, multiverse];
 export function prepareStage(assets, index, opts, onProgress) { return STAGES[index].prepare(assets, opts, onProgress); }
 export function buildStage(assets, index, opts, seed) {
   const stage = STAGES[index].build(assets, opts, seed);
-  stage.id = STAGES[index].id; stage.name = STAGES[index].name;
+  stage.id = STAGES[index].id; stage.name = stage.name || STAGES[index].name; stage.done = stage.done || STAGES[index].done;
   return stage;
 }

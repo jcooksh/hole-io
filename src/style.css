@@ -173,6 +173,17 @@ h1 { font-size: clamp(38px, 11vw, 54px); color: var(--ink); }
 h2 { font-size: 34px; }
 .tag { margin: 10px 0 20px; font-size: 16px; color: #48586b; }
 
+.maps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 0 0 12px; padding: 0; border: 0; min-width: 0; }
+.maps legend { padding: 0 0 6px 2px; font: 11px var(--display); letter-spacing: 0.06em; color: #5b6b7d; text-align: left; }
+.maps label { position: relative; cursor: pointer; }
+.maps input { position: absolute; opacity: 0; inset: 0; }
+.maps span { display: block; height: 100%; padding: 9px 6px 8px; border-radius: 12px; background: #eef2f6; border: 2px solid transparent; text-align: center; }
+.maps b { display: block; font: 800 14px/1.2 var(--body); color: var(--ink); }
+.maps small { display: block; margin-top: 3px; font-size: 11px; line-height: 1.25; color: #5b6b7d; }
+.maps input:checked + span { background: #e3f1ff; border-color: var(--accent); }
+.maps input:focus-visible + span { outline: 3px solid var(--sun); outline-offset: 2px; }
+.maps label:hover span { background: #e3ebf3; }
+
 .name { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; padding: 4px 4px 4px 14px; border-radius: 12px; background: #eef2f6; }
 .name span { font: 11px var(--display); letter-spacing: 0.06em; color: #5b6b7d; }
 .name input {
@@ -244,6 +255,7 @@ button:focus-visible { outline: 3px solid var(--sun); outline-offset: 3px; }
   #stage { justify-self: start; text-align: left; }
 }
 @media (max-height: 520px) {
+  .maps small { display: none; }
   .how li + li { display: none; }
   #feed div:nth-last-child(n+3) { display: none; }
   .card { padding: 16px 20px; }

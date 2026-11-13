@@ -27,7 +27,9 @@ The worlds after the city use these extra sources.
 | What | Used for | Source | License |
 | --- | --- | --- | --- |
 | Kenney City Kit (Industrial) 2.0, Food Kit, Mini Skate 2.0, Cube Pets 1.0 | factories, snacks, skate park, pets | https://opengameart.org/content/city-kit-industrial , /food-kit , /mini-skate , /cube-pets | CC0 |
-| Kenney Pirate Kit 2.1 | ships on the globe | https://opengameart.org/content/pirate-kit | CC0 |
+| Kenney Pirate Kit 2.1 | ships on the globe; towers, cannons, barrels and crates on the medieval map | https://opengameart.org/content/pirate-kit | CC0 |
+| Kenney Hexagon Kit, Castle Kit, Fantasy Town Kit 2.0 | the medieval map: houses, keeps, walls, siege engines, market stalls, carts, trees | https://opengameart.org/content/hexagon-kit , /castle-kit , /fantasy-town-kit | CC0 |
+| Kenney Space Kit 1.0, Space Station Kit | the colony map: habitats, spacecraft, dishes, rocks, craters, crates and consoles | https://opengameart.org/content/space-kit , /space-station-kit | CC0 |
 | NASA Blue Marble | the Earth's surface | NASA Earth Observatory, taken from the example images of the `three-globe` package | Public domain |
 | Natural Earth 1:110m countries | country outlines you can eat | https://www.naturalearthdata.com via the `world-atlas` package | Public domain |
 | Solar System Scope textures | Sun, planets, moons, Saturn's rings, star background | https://www.solarsystemscope.com/textures/ | CC BY 4.0 |
@@ -43,7 +45,7 @@ heic1501a, heic1509a, heic1608a, opo0328a, opo0501a, opo0624a, opo9941a, potw103
 Changes made: images were resized and re-compressed; the planet and star textures were scaled to
 1024 px; country outlines were converted from TopoJSON to a compact JSON file. The landmark models
 are the original STL files. Towns and cities in the countryside stage are assembled in code from
-the Kenney building models.
+the Kenney building models, and so are the castle keeps and colony towers on the two extra maps.
 
 ## Code
 

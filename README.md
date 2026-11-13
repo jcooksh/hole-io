@@ -7,6 +7,9 @@ the whole city and the game moves up a size: the countryside (whole towns are on
 the multiverse. Seven other holes are eating the same world; one of a higher level can swallow you,
 and that ends the run. There is no clock.
 
+The first stage comes in three flavours, picked on the title screen: a modern city, a medieval
+kingdom (castles, market towns, siege camps) and a colony on another planet.
+
 ## Play
 
 Hosted with GitHub Pages: **https://jcooksh.github.io/hole-io/**
@@ -45,6 +48,7 @@ Then open http://localhost:8000.
 - `src/game.js` - the rules shared by every stage: holes, swallowing, levels, bots, traffic, pedestrians
 - `src/stages.js` - the seven worlds (city, countryside, Earth, solar system, galaxy, universe, multiverse)
 - `src/city.js` - random city layout (new town every run)
+- `src/maps.js` - the medieval and colony maps, and the map list
 - `src/assets.js` - model loading, instancing prep, the shader patch that cuts the holes
 - `src/audio.js` - sound effects
 - `vendor/three/` - three.js r170

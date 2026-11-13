@@ -10,10 +10,10 @@ const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>'
 
 // ---- renderer --------------------------------------------------------------
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-let pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+let pixelRatio = Math.min(window.devicePixelRatio || 1, 1.5);
 renderer.setPixelRatio(pixelRatio);
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.type = THREE.PCFShadowMap;
 
 const SKY = 0x9fd8ff;
 const scene = new THREE.Scene();
@@ -30,13 +30,15 @@ scene.add(sun, sun.target);
 
 const camera = new THREE.PerspectiveCamera(42, 1, 1, 1600);
 const PITCH = 1.02;
+const aim = camera.clone();
 let camR = 1, shadowExtent = 0, menuAngle = 0.6;
 
 function resize() {
   const w = window.innerWidth, h = window.innerHeight;
   renderer.setSize(w, h, false);
-  camera.aspect = w / h;
+  camera.aspect = aim.aspect = w / h;
   camera.updateProjectionMatrix();
+  aim.updateProjectionMatrix();
 }
 window.addEventListener('resize', resize);
 resize();
@@ -63,7 +65,8 @@ function makeLabels() {
     const el = document.createElement('div');
     el.className = h.isPlayer ? 'label me' : 'label';
     el.style.setProperty('--c', hex(h.color));
-    el.textContent = h.name;
+    el.innerHTML = `${esc(h.name)} <b></b>`;
+    el.dataset.lv = '';
     $('labels').appendChild(el);
     labels.push(el);
   }
@@ -72,9 +75,10 @@ function makeLabels() {
 function updateLabels() {
   game.holes.forEach((h, i) => {
     const el = labels[i];
-    const [x, y, ok] = toScreen(h.x, 0.3, h.z - h.shown * 1.1);
+    const [x, y, ok] = toScreen(h.x, 0.3, h.z - h.shown * (h.isPlayer ? 1.35 : 1.15));
     const show = h.alive && ok && h.shown > 0.3 && x > -80 && y > -40 && x < window.innerWidth + 80 && y < window.innerHeight + 40;
     el.style.display = show ? '' : 'none';
+    if (el.dataset.lv !== String(h.level)) { el.dataset.lv = h.level; el.lastElementChild.textContent = h.level + 1; }
     if (show) el.style.transform = `translate(${x.toFixed(1)}px, ${(y - 8).toFixed(1)}px) translate(-50%, -100%)`;
   });
 }
@@ -107,7 +111,7 @@ function feed(html) {
   setTimeout(() => el.remove(), 4000);
 }
 
-let boardTimer = 0, lastSecond = -1;
+let boardTimer = 0, lastSecond = -1, lastScore = -1;
 function updateHud(dt) {
   const t = Math.ceil(game.time);
   if (t !== lastSecond) {
@@ -116,13 +120,18 @@ function updateHud(dt) {
     $('timer').classList.toggle('low', t <= 10 && game.mode === 'playing');
     if (t <= 5 && t > 0 && game.mode === 'playing') sound.play('click_001', { rate: 1.5, gain: 0.7 });
   }
+  if (game.player.score !== lastScore) {
+    lastScore = game.player.score;
+    $('meScore').textContent = lastScore;
+    $('meLevel').textContent = `Level ${game.player.level + 1}`;
+    $('meBar').style.width = `${Math.round(game.player.progress * 100)}%`;
+  }
   boardTimer -= dt;
   if (boardTimer > 0) return;
   boardTimer = 0.25;
   const rank = game.ranking();
   const me = rank.indexOf(game.player);
   $('meRank').textContent = `#${me + 1}`;
-  $('meScore').textContent = game.player.score;
   const rows = rank.slice(0, 5);
   if (me >= 5) rows[4] = game.player;
   $('board').innerHTML = rows.map((h) => `<li class="${h.isPlayer ? 'me' : ''}${h.alive ? '' : ' dead'}" style="--c:${hex(h.color)}"><i></i><span>${rank.indexOf(h) + 1}. ${esc(h.name)}</span><b>${h.score}</b></li>`).join('');
@@ -133,12 +142,12 @@ function bind() {
   game.on.eat = (h, o) => {
     if (!h.isPlayer) return;
     const big = o.pts >= 20;
-    popup(`+${o.pts}`, o.x, Math.min(o.h, 6) + 1, o.z, big);
+    popup(`+${o.pts}`, o.x, Math.min(o.h, 4) + 1.5, o.z, big);
     const rate = Math.max(0.45, Math.min(1.7, 1.55 - o.rf * 0.13)) * (0.94 + Math.random() * 0.12);
     if (big) { sound.play('drop_004', { rate: rate * 0.9, gain: 1 }); shake = Math.min(1, shake + 0.35 + o.rf * 0.04); }
     else sound.play(o.rf < 0.8 ? 'drop_001' : o.rf < 2 ? 'drop_002' : 'drop_003', { rate, gain: 0.75, gap: 0.035 });
   };
-  game.on.sizeUp = () => { banner('Size up!'); sound.play('confirmation_002', { gain: 0.8 }); };
+  game.on.sizeUp = (h) => { banner(`Level ${h.level + 1}!`); sound.play('confirmation_002', { gain: 0.8 }); boardTimer = 0; };
   game.on.swallow = (a, b, gain) => {
     feed(`<b style="--c:${hex(a.color)}">${esc(a.name)}</b> swallowed <b style="--c:${hex(b.color)}">${esc(b.name)}</b>`);
     if (b.isPlayer) { banner(`Swallowed by ${a.name}!`, true); sound.play('error_006'); shake = 1; }
@@ -163,7 +172,7 @@ function start(playerName) {
   makeLabels();
   $('popups').textContent = ''; $('feed').textContent = '';
   camR = game.player.r; lastSecond = -1; boardTimer = 0; shake = 0;
-  input.pointer = null; input.stick = null;
+  input.stick = null; input.useKeys = false; lastScore = -1;
   $('menu').hidden = true; $('end').hidden = true;
   $('hud').hidden = !playerName;
   if (playerName) { banner('Go!'); sound.play('maximize_008'); }
@@ -187,8 +196,11 @@ canvas.addEventListener('pointerdown', (e) => {
   s.firstElementChild.style.transform = '';
   canvas.setPointerCapture(e.pointerId);
 });
+window.addEventListener('pointermove', (e) => {
+  if (e.pointerType === 'mouse') { input.pointer = [e.clientX, e.clientY]; input.useKeys = false; }
+});
 canvas.addEventListener('pointermove', (e) => {
-  if (e.pointerType === 'mouse') { input.pointer = [e.clientX, e.clientY]; input.useKeys = false; return; }
+  if (e.pointerType === 'mouse') return;
   const st = input.stick;
   if (!st || st.id !== e.pointerId) return;
   let dx = e.clientX - st.ox, dy = e.clientY - st.oy;
@@ -204,6 +216,9 @@ canvas.addEventListener('pointerup', endTouch);
 canvas.addEventListener('pointercancel', endTouch);
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
+const raycaster = new THREE.Raycaster(), _ndc = new THREE.Vector2();
+const GROUND = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+
 function readInput() {
   let x = 0, z = 0;
   if (input.useKeys && input.keys.size) {
@@ -212,12 +227,12 @@ function readInput() {
   } else if (input.stick) {
     x = input.stick.x; z = input.stick.y;
   } else if (input.pointer && !input.useKeys) {
-    const p = game.player;
-    const [sx, sy] = toScreen(p.x, 0, p.z);
-    const dx = input.pointer[0] - sx, dy = input.pointer[1] - sy;
-    const len = Math.hypot(dx, dy), full = Math.min(window.innerWidth, window.innerHeight) * 0.17;
-    if (len > 10) { const m = Math.min(1, len / full) / len; x = dx * m; z = dy * m; }
+    // Mouse: the hole heads straight for the spot on the ground under the cursor.
+    _ndc.set((input.pointer[0] / window.innerWidth) * 2 - 1, 1 - (input.pointer[1] / window.innerHeight) * 2);
+    raycaster.setFromCamera(_ndc, aim);
+    if (raycaster.ray.intersectPlane(GROUND, _v)) { game.input.point = true; game.input.tx = _v.x; game.input.tz = _v.z; return; }
   }
+  game.input.point = false;
   game.input.x = x; game.input.z = z;
 }
 
@@ -233,14 +248,19 @@ function updateCamera(dt) {
     game.viewRadius = 170;
   } else {
     const p = game.player;
-    const k = 1 - Math.exp(-(p.alive ? 9 : 2.5) * dt);
+    // With the mouse the hole sits under the cursor and the view drifts after it; with keys or
+    // touch the view stays glued to the hole.
+    const k = 1 - Math.exp(-(!p.alive ? 2.5 : game.input.point ? 3.2 : 10) * dt);
     f.x += (p.x - f.x) * k; f.z += (p.z - f.z) * k;
-    camR += (p.r - camR) * (1 - Math.exp(-2.2 * dt));
+    camR += (p.r - camR) * (1 - Math.exp(-1.1 * dt));
     const portrait = Math.max(1, Math.min(1.9, 1.15 / camera.aspect));
-    const dist = (17 + camR * 8.5) * portrait;
+    const dist = (20 + camR * 6) * portrait;
     shake = Math.max(0, shake - dt * 2.5);
     const s = shake * shake * (0.25 + camR * 0.12);
-    camera.position.set(f.x + (Math.random() - 0.5) * s, Math.sin(PITCH) * dist, f.z + Math.cos(PITCH) * dist + (Math.random() - 0.5) * s);
+    aim.position.set(f.x, Math.sin(PITCH) * dist, f.z + Math.cos(PITCH) * dist);
+    aim.lookAt(f.x, 0, f.z);
+    aim.updateMatrixWorld();
+    camera.position.set(aim.position.x + (Math.random() - 0.5) * s, aim.position.y, aim.position.z + (Math.random() - 0.5) * s);
     camera.lookAt(f.x, 0, f.z);
     game.viewRadius = dist * 0.8;
   }
@@ -273,8 +293,8 @@ function frame(now) {
   if (game.mode !== 'idle') updateHud(dt);
 
   // If the device cannot keep up, drop resolution first and soft shadows second.
-  if (raw > 0.034) slow += raw; else if (++fastFrames > 120) { slow = 0; fastFrames = 0; }
-  if (slow > 2.5) {
+  if (raw > 0.026) slow += raw; else if (++fastFrames > 120) { slow = 0; fastFrames = 0; }
+  if (slow > 1.5) {
     slow = 0; fastFrames = 0;
     if (pixelRatio > 1) { pixelRatio = Math.max(1, pixelRatio - 0.5); renderer.setPixelRatio(pixelRatio); resize(); }
     else if (sun.shadow.mapSize.x > 1024) { sun.shadow.mapSize.set(1024, 1024); sun.shadow.map?.dispose(); sun.shadow.map = null; }
@@ -309,7 +329,7 @@ loadAssets((p) => { $('progress').firstElementChild.style.width = `${Math.round(
     $('progress').classList.add('done');
     $('play').disabled = false;
     $('play').textContent = 'Play';
-    game.renderer = renderer;
+    game.renderer = renderer; game.camera = camera;
     window.__game = game;
   })
   .catch((err) => {

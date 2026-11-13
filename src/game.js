@@ -7,17 +7,22 @@ import { generateCity, NODES, BOUND, nodePos } from './city.js';
 export const ROUND_TIME = 120;
 
 const CELL = 10, ORIGIN = -200, CELLS = 40;
-const R0 = 1.0;            // starting radius
 const FIT = 0.92;          // an object fits when its size <= radius * FIT
 const GRAVITY = 45;
 const DIRS = [[1, 0], [0, 1], [-1, 0], [0, -1]];
 const COLORS = [0x2f9bff, 0xff5a5f, 0xffb400, 0x69d84f, 0xb86bff, 0xff7ad9, 0x18c9c0, 0xff8a3d];
 const BOT_NAMES = ['Munchy', 'Pothole Pete', 'Abyss', 'Nom Nom', 'Sinker', 'Gobbler', 'Crater Kate', 'Deep Dan',
   'Gulpzilla', 'Manhole Max', 'Void Vera', 'Big Dipper', 'Chomp', 'Drainpipe', 'Lil Pit', 'Sir Swallow'];
-const MILESTONES = [1.5, 2, 2.6, 3.4, 4.4, 5.6, 7, 8.5, 10, 12, 14, 16.5, 19, 22, 26];
 
-export const radiusFor = (score) => R0 * Math.sqrt(1 + score / 17);
-const speedFor = (r) => 7.5 + 1.4 * r;
+// Holes grow in steps. LEVEL_R[i] is the radius at level i + 1, LEVEL_AT[i] the score that unlocks it.
+export const LEVEL_R = [1, 1.4, 1.9, 2.5, 3.2, 4, 5, 6.2, 7.6, 9.2, 11, 13, 15.5, 18, 21];
+export const LEVEL_AT = [0, 12, 30, 60, 100, 160, 240, 340, 480, 760, 1250, 2000, 3000, 4200, 5600];
+export function levelFor(score) {
+  let i = 0;
+  while (i + 1 < LEVEL_AT.length && score >= LEVEL_AT[i + 1]) i++;
+  return i;
+}
+const speedFor = (r) => 9 + 1.4 * r;
 const cellOf = (v) => Math.max(0, Math.min(CELLS - 1, Math.floor((v - ORIGIN) / CELL)));
 const wrapAngle = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 
@@ -25,7 +30,7 @@ const _m = new THREE.Matrix4(), _p = new THREE.Vector3(), _s = new THREE.Vector3
 const _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _axis = new THREE.Vector3();
 const UP = new THREE.Vector3(0, 1, 0);
 
-let wallGeo, ringGeo, wallMat;
+let wallGeo, ringGeo, ringGeoPlayer, wallMat;
 function holeGeometry() {
   if (wallGeo) return;
   wallGeo = new THREE.CylinderGeometry(1, 1, 1, 56, 1, false).translate(0, -0.5, 0);
@@ -37,6 +42,28 @@ function holeGeometry() {
   wallGeo.setAttribute('color', new THREE.BufferAttribute(col, 3));
   wallMat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false });
   ringGeo = new THREE.RingGeometry(0.97, 1.1, 72).rotateX(-Math.PI / 2);
+  ringGeoPlayer = new THREE.RingGeometry(1.0, 1.6, 96, 2).rotateX(-Math.PI / 2);
+}
+
+// Ring around a hole. For the player it doubles as the level progress bar:
+// it fills clockwise from the top, and flashes white on a level-up.
+function ringMaterial(color, fill) {
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      uColor: { value: new THREE.Color(color) }, uFill: { value: new THREE.Color(fill) },
+      uProgress: { value: 0 }, uFlash: { value: 0 }, uOuter: { value: 2 },
+    },
+    vertexShader: 'varying vec2 vP; void main() { vP = position.xz; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: `uniform vec3 uColor; uniform vec3 uFill; uniform float uProgress; uniform float uFlash; uniform float uOuter; varying vec2 vP;
+      void main() {
+        if (length(vP) > uOuter) discard;
+        float f = atan(vP.x, -vP.y) / 6.2831853;
+        if (f < 0.0) f += 1.0;
+        vec3 c = f < uProgress ? uFill : uColor;
+        gl_FragColor = vec4(mix(c, vec3(1.0), uFlash), 1.0);
+        #include <colorspace_fragment>
+      }`,
+  });
 }
 
 class Hole {
@@ -44,22 +71,31 @@ class Hole {
     holeGeometry();
     this.index = index; this.name = name; this.color = color; this.isPlayer = isPlayer;
     this.x = 0; this.z = 0; this.vx = 0; this.vz = 0;
-    this.score = 0; this.r = R0; this.shown = R0; this.alive = true; this.respawn = 0; this.eaten = 0;
-    this.milestone = 0;
+    this.score = 0; this.level = 0; this.r = LEVEL_R[0]; this.shown = this.r; this.grow = 0; this.flash = 0;
+    this.alive = true; this.respawn = 0; this.eaten = 0;
     this.ai = { think: Math.random() * 0.5, tx: 0, tz: 0, obj: null, prey: null, chase: 0, skip: new Set(), skill: 0.72 + Math.random() * 0.2, aggro: 0.3 + Math.random() * 0.6 };
     this.group = new THREE.Group();
     this.wall = new THREE.Mesh(wallGeo, wallMat);
-    this.ring = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color, fog: false }));
+    this.ring = new THREE.Mesh(isPlayer ? ringGeoPlayer : ringGeo, ringMaterial(color, isPlayer ? 0xffd21f : color));
     this.ring.position.y = 0.24;
     this.group.add(this.wall, this.ring);
   }
-  get target() { return radiusFor(this.score); }
+  // 0..1 towards the next level
+  get progress() {
+    const i = this.level;
+    return i + 1 >= LEVEL_AT.length ? 1 : Math.max(0, (this.score - LEVEL_AT[i]) / (LEVEL_AT[i + 1] - LEVEL_AT[i]));
+  }
+  setLevel() { this.level = levelFor(this.score); this.r = LEVEL_R[this.level]; }
   sync() {
     const r = Math.max(this.shown, 0.001);
     this.group.visible = this.shown > 0.02;
     this.group.position.set(this.x, 0, this.z);
     this.wall.scale.set(r * 1.02, Math.max(10, r * 3 + 6), r * 1.02);
     this.ring.scale.set(r, 1, r);
+    this.ring.material.uniforms.uProgress.value = this.isPlayer ? this.progress : 0;
+    this.ring.material.uniforms.uFlash.value = this.flash;
+    // keep the player's ring readable while the hole is still tiny
+    this.ring.material.uniforms.uOuter.value = 1.2 + 0.24 / r;
   }
 }
 
@@ -77,7 +113,7 @@ export class Game {
     this.on = { eat() {}, swallow() {}, sizeUp() {}, over() {}, respawn() {} };
     this.root = null; this.holes = []; this.objects = []; this.falling = []; this.people = []; this.cars = [];
     this.grid = []; this.mode = 'idle'; this.time = ROUND_TIME; this.player = null;
-    this.input = { x: 0, z: 0 };
+    this.input = { x: 0, z: 0, point: false, tx: 0, tz: 0 };
     this.focus = new THREE.Vector3(); this.viewRadius = 80;
     // The lawn tiles and the land around the city share one colour (the kit's grass, toned down a little).
     const grass = assets.models['nature/ground_grass'].geometry.attributes.color;
@@ -206,7 +242,7 @@ export class Game {
       if (d > bestD) { bestD = d; best = [x, z]; }
     }
     h.x = best[0]; h.z = best[1]; h.vx = h.vz = 0;
-    h.r = h.target; h.shown = 0; h.alive = true; h.ai.obj = h.ai.prey = null; h.ai.think = 0;
+    h.setLevel(); h.shown = 0; h.grow = 0; h.alive = true; h.ai.obj = h.ai.prey = null; h.ai.think = 0;
   }
 
   // ---- spatial grid ------------------------------------------------------
@@ -352,8 +388,9 @@ export class Game {
 
   addScore(h, pts) {
     h.score += pts; h.eaten++;
-    h.r = h.target;
-    while (h.milestone < MILESTONES.length && h.r >= MILESTONES[h.milestone]) { h.milestone++; if (h.isPlayer) this.on.sizeUp(h); }
+    const before = h.level;
+    h.setLevel();
+    if (h.level > before) { h.flash = 1; if (h.isPlayer) this.on.sizeUp(h); }
   }
 
   eatObjects(h) {
@@ -417,7 +454,7 @@ export class Game {
       if (o.r > h.r * 1.1) {
         const danger = o.r + h.r + 13;
         if (d < danger) { flee = true; const w = (danger - d) / danger / d; fx += dx * w; fz += dz * w; }
-      } else if (h.r > o.r * 1.3 && d < 26 + h.r * 2 && d < preyD) { prey = o; preyD = d; }
+      } else if (h.r > o.r * 1.15 && d < 26 + h.r * 2 && d < preyD) { prey = o; preyD = d; }
     }
     if (flee) {
       const l = Math.hypot(fx, fz) || 1;
@@ -471,17 +508,29 @@ export class Game {
     const active = this.mode !== 'over';
     for (const h of this.holes) {
       if (!h.alive) {
-        h.shown = Math.max(0, h.shown - dt * Math.max(4, h.shown * 6));
+        h.shown = Math.max(0, h.shown - dt * Math.max(4, h.shown * 6)); h.grow = 0;
         if (active && (h.respawn -= dt) <= 0) { this.placeHole(h); this.on.respawn(h); }
         h.sync();
         continue;
       }
-      h.shown += (h.r - h.shown) * (1 - Math.exp(-7 * dt));
+      // springy growth so a level-up visibly pops
+      h.grow += ((h.r - h.shown) * 150 - h.grow * 13) * dt;
+      h.shown = Math.max(0.05, h.shown + h.grow * dt);
+      h.flash = Math.max(0, h.flash - dt * 2.2);
       if (active) {
-        let ix, iz;
-        if (h.isPlayer && !this.autopilot) { ix = this.input.x; iz = this.input.z; } else [ix, iz] = this.steer(h, dt);
-        const sp = speedFor(h.r), k = 1 - Math.exp(-(h.isPlayer ? 12 : 6) * dt);
-        h.vx += (ix * sp - h.vx) * k; h.vz += (iz * sp - h.vz) * k;
+        const sp = speedFor(h.r);
+        if (h.isPlayer && !this.autopilot) {
+          // The player's hole answers the controls immediately: no easing.
+          const inp = this.input;
+          if (inp.point) {
+            const dx = inp.tx - h.x, dz = inp.tz - h.z, d = Math.hypot(dx, dz);
+            const step = Math.min(sp * dt, d);
+            h.vx = d > 1e-4 ? (dx / d) * step / dt : 0; h.vz = d > 1e-4 ? (dz / d) * step / dt : 0;
+          } else { h.vx = inp.x * sp; h.vz = inp.z * sp; }
+        } else {
+          const [ix, iz] = this.steer(h, dt), k = 1 - Math.exp(-6 * dt);
+          h.vx += (ix * sp - h.vx) * k; h.vz += (iz * sp - h.vz) * k;
+        }
         h.x = Math.max(-BOUND, Math.min(BOUND, h.x + h.vx * dt));
         h.z = Math.max(-BOUND, Math.min(BOUND, h.z + h.vz * dt));
         this.eatObjects(h);

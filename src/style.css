@@ -35,25 +35,31 @@ html, body {
 
 .label {
   position: absolute; left: 0; top: 0; white-space: nowrap;
-  font: 12px/1 var(--display); letter-spacing: 0.04em;
-  padding: 4px 8px 3px; border-radius: 999px;
+  font: 700 12px/1 var(--body);
+  padding: 4px 6px 4px 9px; border-radius: 999px;
   background: var(--panel); color: #fff;
   border-bottom: 2px solid var(--c, #fff);
   will-change: transform;
 }
 .label.me { background: var(--c); color: #fff; border-bottom-color: rgba(0, 0, 0, 0.25); }
+.label b {
+  display: inline-block; min-width: 16px; margin-left: 4px; padding: 2px 4px 1px; border-radius: 999px; text-align: center;
+  font: 800 11px/1 var(--body); background: #fff; color: var(--ink);
+}
 
 .pop {
   position: absolute; left: 0; top: 0;
-  font: 18px/1 var(--display); color: #fff;
-  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.35), 0 0 8px rgba(0, 0, 0, 0.25);
-  animation: pop 0.75s ease-out forwards;
+  font: 900 30px/1 var(--body); color: #ffe23a; letter-spacing: 0.01em;
+  -webkit-text-stroke: 7px var(--ink); paint-order: stroke fill;
+  animation: pop 1s ease-out forwards;
 }
-.pop.big { font-size: 30px; color: var(--sun); }
+.pop.big { font-size: 48px; color: #fff; }
 @keyframes pop {
-  0% { opacity: 0; margin-top: 6px; scale: 0.6; }
-  18% { opacity: 1; scale: 1.15; }
-  100% { opacity: 0; margin-top: -46px; scale: 1; }
+  0% { opacity: 0; margin-top: 8px; scale: 0.5; }
+  14% { opacity: 1; scale: 1.25; }
+  26% { scale: 1; }
+  75% { opacity: 1; }
+  100% { opacity: 0; margin-top: -60px; }
 }
 
 /* ---- HUD ---------------------------------------------------------------- */
@@ -61,21 +67,25 @@ html, body {
 
 #timer {
   position: absolute; left: 50%; top: max(12px, env(safe-area-inset-top)); translate: -50% 0;
-  font: 30px/1 var(--display); font-variant-numeric: tabular-nums;
-  padding: 10px 18px 8px; border-radius: 14px; background: var(--panel);
+  font: 800 30px/1 var(--body); font-variant-numeric: tabular-nums;
+  padding: 10px 18px; border-radius: 14px; background: var(--panel);
 }
 #timer.low { background: #d6362f; animation: pulse 1s ease-in-out infinite; }
 @keyframes pulse { 50% { scale: 1.08; } }
 
 #me {
-  position: absolute; left: 12px; top: max(12px, env(safe-area-inset-top));
-  display: flex; align-items: baseline; gap: 8px;
-  padding: 10px 14px 8px; border-radius: 14px; background: var(--panel);
-  font-family: var(--display); font-variant-numeric: tabular-nums;
+  position: absolute; left: 12px; top: max(12px, env(safe-area-inset-top)); min-width: 150px;
+  padding: 10px 14px; border-radius: 14px; background: var(--panel);
+  font-family: var(--body); font-variant-numeric: tabular-nums;
 }
-#me b { color: var(--sun); font-size: 16px; font-weight: normal; }
-#me span { font-size: 24px; }
-#me small { font: 11px var(--body); opacity: 0.75; text-transform: uppercase; letter-spacing: 0.08em; }
+#me > div:first-child { display: flex; align-items: baseline; gap: 8px; }
+#me b { color: var(--sun); font-size: 16px; font-weight: 800; }
+#me span { font-size: 26px; font-weight: 800; }
+#me small { font-size: 11px; opacity: 0.75; text-transform: uppercase; letter-spacing: 0.08em; }
+#me .lv { display: flex; align-items: center; gap: 8px; margin-top: 7px; }
+#me em { font: 800 12px var(--body); white-space: nowrap; }
+#me .bar { flex: 1; height: 8px; border-radius: 4px; background: rgba(255, 255, 255, 0.2); overflow: hidden; }
+#me .bar i { display: block; height: 100%; width: 0; border-radius: 4px; background: #ffd21f; transition: width 0.2s; }
 
 #board {
   position: absolute; right: 12px; top: max(12px, env(safe-area-inset-top));
@@ -86,13 +96,14 @@ html, body {
 #board li { display: flex; align-items: center; gap: 8px; padding: 3px 4px; border-radius: 6px; }
 #board li i { width: 10px; height: 10px; border-radius: 50%; background: var(--c); flex: none; }
 #board li span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#board li b { font-weight: 600; }
+#board li b { font-weight: 800; }
 #board li.me { background: rgba(255, 255, 255, 0.16); }
 #board li.dead span { opacity: 0.45; text-decoration: line-through; }
 
 #banner {
   position: absolute; left: 50%; top: 24%; translate: -50% 0; text-align: center;
-  font: 34px/1.1 var(--display); text-shadow: 0 3px 0 rgba(0, 0, 0, 0.3);
+  font: 900 40px/1.1 var(--body); color: #fff;
+  -webkit-text-stroke: 8px var(--ink); paint-order: stroke fill;
   opacity: 0; pointer-events: none; white-space: nowrap;
 }
 #banner.show { animation: banner 1.6s ease-out forwards; }
@@ -183,12 +194,14 @@ button:focus-visible { outline: 3px solid var(--sun); outline-offset: 3px; }
 #results li.me i { box-shadow: 0 0 0 2px #fff; }
 
 @media (max-width: 560px) {
-  #timer { font-size: 22px; padding: 8px 12px 6px; }
-  #me { padding: 8px 10px 6px; }
+  #timer { font-size: 22px; padding: 8px 12px; }
+  #me { padding: 8px 10px; min-width: 104px; }
   #me span { font-size: 18px; }
   #me small { display: none; }
+  .pop { font-size: 24px; -webkit-text-stroke-width: 6px; }
+  .pop.big { font-size: 38px; }
   #board { font-size: 11px; min-width: 128px; padding: 6px; }
-  #banner { font-size: 24px; }
+  #banner { font-size: 28px; -webkit-text-stroke-width: 6px; }
   .card { padding: 22px 18px 18px; }
 }
 @media (max-height: 520px) {

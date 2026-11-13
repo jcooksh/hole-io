@@ -20,7 +20,10 @@
 
 <div id="hud" hidden>
   <div id="timer">2:00</div>
-  <div id="me"><b id="meRank">#1</b><span id="meScore">0</span><small>points</small></div>
+  <div id="me">
+    <div><b id="meRank">#1</b><span id="meScore">0</span><small>points</small></div>
+    <div class="lv"><em id="meLevel">Level 1</em><div class="bar"><i id="meBar"></i></div></div>
+  </div>
   <ol id="board"></ol>
   <div id="banner"></div>
   <div id="feed"></div>
@@ -37,9 +40,9 @@
     <button id="play" type="button" disabled>Loading…</button>
     <div id="progress"><i></i></div>
     <ul class="how">
-      <li>Steer with the mouse, a finger, or WASD / arrow keys.</li>
-      <li>Anything smaller than you falls in. Two minutes on the clock.</li>
-      <li>Bigger holes can swallow you. Return the favour.</li>
+      <li>Your hole follows the mouse. On a phone, drag. WASD / arrows work too.</li>
+      <li>Anything smaller than you falls in. Each bite fills the yellow ring; a full ring is a level and a bigger hole.</li>
+      <li>Holes of a higher level can swallow you. Return the favour.</li>
     </ul>
     <p class="credit">Models, sounds and font by <a href="https://kenney.nl" target="_blank" rel="noopener">Kenney</a> (CC0).</p>
   </div>

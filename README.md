@@ -8,7 +8,10 @@ holes are eating the same town, and a bigger hole can swallow a smaller one. Two
 
 Hosted with GitHub Pages: **https://jcooksh.github.io/hole-io/**
 
-Controls: move the mouse, drag a finger, or use WASD / arrow keys.
+Controls: the hole follows your mouse. On a phone, drag. WASD / arrow keys work too.
+
+Every bite fills the yellow ring around your hole. A full ring is a level, and each level makes
+the hole bigger. A hole of a higher level can swallow a lower one.
 
 ## Turning on GitHub Pages
 

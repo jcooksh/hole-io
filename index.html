@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Gulp City</title>
+<meta name="description" content="You are a hole in the ground. Swallow the town, grow, and out-eat the other holes before the clock runs out.">
+<meta name="theme-color" content="#9fd8ff">
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="./src/style.css">
+<script type="importmap">
+{ "imports": { "three": "./vendor/three/three.module.min.js", "three/addons/": "./vendor/three/addons/" } }
+</script>
+</head>
+<body>
+<canvas id="view"></canvas>
+
+<div id="labels"></div>
+<div id="popups"></div>
+
+<div id="hud" hidden>
+  <div id="timer">2:00</div>
+  <div id="me"><b id="meRank">#1</b><span id="meScore">0</span><small>points</small></div>
+  <ol id="board"></ol>
+  <div id="banner"></div>
+  <div id="feed"></div>
+  <button id="mute" type="button" aria-label="Toggle sound">Sound on</button>
+</div>
+
+<div id="stick" hidden><i></i></div>
+
+<section id="menu" class="overlay">
+  <div class="card">
+    <h1>Gulp City</h1>
+    <p class="tag">You are a hole. Swallow the town. Get bigger.</p>
+    <label class="name"><span>Name</span><input id="name" maxlength="14" autocomplete="off" spellcheck="false" value="You"></label>
+    <button id="play" type="button" disabled>Loading…</button>
+    <div id="progress"><i></i></div>
+    <ul class="how">
+      <li>Steer with the mouse, a finger, or WASD / arrow keys.</li>
+      <li>Anything smaller than you falls in. Two minutes on the clock.</li>
+      <li>Bigger holes can swallow you. Return the favour.</li>
+    </ul>
+    <p class="credit">Models, sounds and font by <a href="https://kenney.nl" target="_blank" rel="noopener">Kenney</a> (CC0).</p>
+  </div>
+</section>
+
+<section id="end" class="overlay" hidden>
+  <div class="card">
+    <h2 id="endTitle">Time!</h2>
+    <p class="tag" id="endSub"></p>
+    <ol id="results"></ol>
+    <button id="again" type="button">Play again</button>
+  </div>
+</section>
+
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,319 @@
+import * as THREE from 'three';
+import { loadAssets } from './assets.js';
+import { Game, ROUND_TIME } from './game.js';
+import { Sound } from './audio.js';
+
+const $ = (id) => document.getElementById(id);
+const canvas = $('view');
+const hex = (c) => `#${c.toString(16).padStart(6, '0')}`;
+const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+// ---- renderer --------------------------------------------------------------
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+let pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+renderer.setPixelRatio(pixelRatio);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+const SKY = 0x9fd8ff;
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(SKY);
+scene.fog = new THREE.Fog(SKY, 300, 900);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x8a94a6, 1.75));
+const sun = new THREE.DirectionalLight(0xfff2dd, 2.1);
+const SUN_DIR = new THREE.Vector3(0.55, 1, 0.38).normalize();
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.bias = -0.0004;
+sun.shadow.normalBias = 0.35;
+scene.add(sun, sun.target);
+
+const camera = new THREE.PerspectiveCamera(42, 1, 1, 1600);
+const PITCH = 1.02;
+let camR = 1, shadowExtent = 0, menuAngle = 0.6;
+
+function resize() {
+  const w = window.innerWidth, h = window.innerHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ---- state -----------------------------------------------------------------
+const sound = new Sound();
+let game = null;
+const input = { pointer: null, stick: null, keys: new Set(), useKeys: false };
+
+// ---- HUD -------------------------------------------------------------------
+const labels = [];
+const popPool = [];
+const _v = new THREE.Vector3();
+
+function toScreen(x, y, z) {
+  _v.set(x, y, z).project(camera);
+  return [(_v.x * 0.5 + 0.5) * window.innerWidth, (-_v.y * 0.5 + 0.5) * window.innerHeight, _v.z < 1];
+}
+
+function makeLabels() {
+  $('labels').textContent = '';
+  labels.length = 0;
+  for (const h of game.holes) {
+    const el = document.createElement('div');
+    el.className = h.isPlayer ? 'label me' : 'label';
+    el.style.setProperty('--c', hex(h.color));
+    el.textContent = h.name;
+    $('labels').appendChild(el);
+    labels.push(el);
+  }
+}
+
+function updateLabels() {
+  game.holes.forEach((h, i) => {
+    const el = labels[i];
+    const [x, y, ok] = toScreen(h.x, 0.3, h.z - h.shown * 1.1);
+    const show = h.alive && ok && h.shown > 0.3 && x > -80 && y > -40 && x < window.innerWidth + 80 && y < window.innerHeight + 40;
+    el.style.display = show ? '' : 'none';
+    if (show) el.style.transform = `translate(${x.toFixed(1)}px, ${(y - 8).toFixed(1)}px) translate(-50%, -100%)`;
+  });
+}
+
+function popup(text, x, y, z, big) {
+  if ($('popups').childElementCount > 16) return;
+  const [sx, sy, ok] = toScreen(x, y, z);
+  if (!ok) return;
+  const el = popPool.pop() || document.createElement('div');
+  el.className = big ? 'pop big' : 'pop';
+  el.textContent = text;
+  el.style.transform = `translate(${sx.toFixed(0)}px, ${sy.toFixed(0)}px) translate(-50%, -50%)`;
+  $('popups').appendChild(el);
+  el.onanimationend = () => { el.remove(); popPool.push(el); };
+}
+
+function banner(text, hold) {
+  const el = $('banner');
+  el.textContent = text;
+  el.className = '';
+  void el.offsetWidth;
+  el.className = hold ? 'hold' : 'show';
+}
+
+function feed(html) {
+  const el = document.createElement('div');
+  el.innerHTML = html;
+  $('feed').appendChild(el);
+  while ($('feed').childElementCount > 4) $('feed').firstChild.remove();
+  setTimeout(() => el.remove(), 4000);
+}
+
+let boardTimer = 0, lastSecond = -1;
+function updateHud(dt) {
+  const t = Math.ceil(game.time);
+  if (t !== lastSecond) {
+    lastSecond = t;
+    $('timer').textContent = `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
+    $('timer').classList.toggle('low', t <= 10 && game.mode === 'playing');
+    if (t <= 5 && t > 0 && game.mode === 'playing') sound.play('click_001', { rate: 1.5, gain: 0.7 });
+  }
+  boardTimer -= dt;
+  if (boardTimer > 0) return;
+  boardTimer = 0.25;
+  const rank = game.ranking();
+  const me = rank.indexOf(game.player);
+  $('meRank').textContent = `#${me + 1}`;
+  $('meScore').textContent = game.player.score;
+  const rows = rank.slice(0, 5);
+  if (me >= 5) rows[4] = game.player;
+  $('board').innerHTML = rows.map((h) => `<li class="${h.isPlayer ? 'me' : ''}${h.alive ? '' : ' dead'}" style="--c:${hex(h.color)}"><i></i><span>${rank.indexOf(h) + 1}. ${esc(h.name)}</span><b>${h.score}</b></li>`).join('');
+}
+
+// ---- game events -----------------------------------------------------------
+function bind() {
+  game.on.eat = (h, o) => {
+    if (!h.isPlayer) return;
+    const big = o.pts >= 20;
+    popup(`+${o.pts}`, o.x, Math.min(o.h, 6) + 1, o.z, big);
+    const rate = Math.max(0.45, Math.min(1.7, 1.55 - o.rf * 0.13)) * (0.94 + Math.random() * 0.12);
+    if (big) { sound.play('drop_004', { rate: rate * 0.9, gain: 1 }); shake = Math.min(1, shake + 0.35 + o.rf * 0.04); }
+    else sound.play(o.rf < 0.8 ? 'drop_001' : o.rf < 2 ? 'drop_002' : 'drop_003', { rate, gain: 0.75, gap: 0.035 });
+  };
+  game.on.sizeUp = () => { banner('Size up!'); sound.play('confirmation_002', { gain: 0.8 }); };
+  game.on.swallow = (a, b, gain) => {
+    feed(`<b style="--c:${hex(a.color)}">${esc(a.name)}</b> swallowed <b style="--c:${hex(b.color)}">${esc(b.name)}</b>`);
+    if (b.isPlayer) { banner(`Swallowed by ${a.name}!`, true); sound.play('error_006'); shake = 1; }
+    else if (a.isPlayer) { banner(`You swallowed ${b.name}!`); sound.play('confirmation_004'); shake = 0.8; popup(`+${gain}`, b.x, 2, b.z, true); }
+  };
+  game.on.respawn = (h) => { if (h.isPlayer) { banner('Back in!'); sound.play('maximize_008'); } };
+  game.on.over = () => {
+    const rank = game.ranking(), place = rank.indexOf(game.player) + 1;
+    $('endTitle').textContent = place === 1 ? 'You win!' : 'Time!';
+    $('endSub').textContent = place === 1
+      ? `Biggest hole in town with ${game.player.score} points.`
+      : `You finished #${place} with ${game.player.score} points.`;
+    $('results').innerHTML = rank.map((h, i) => `<li class="${h.isPlayer ? 'me' : ''}" style="--c:${hex(h.color)}"><em>${i + 1}</em><i></i><span>${esc(h.name)}</span><b>${h.score}</b></li>`).join('');
+    sound.play(place === 1 ? 'confirmation_004' : 'select_005');
+    $('timer').classList.remove('low');
+    setTimeout(() => { $('end').hidden = false; $('again').focus(); }, 900);
+  };
+}
+
+function start(playerName) {
+  game.build((Math.random() * 2 ** 31) | 0, playerName);
+  makeLabels();
+  $('popups').textContent = ''; $('feed').textContent = '';
+  camR = game.player.r; lastSecond = -1; boardTimer = 0; shake = 0;
+  input.pointer = null; input.stick = null;
+  $('menu').hidden = true; $('end').hidden = true;
+  $('hud').hidden = !playerName;
+  if (playerName) { banner('Go!'); sound.play('maximize_008'); }
+}
+
+// ---- input -----------------------------------------------------------------
+const KEYS = { ArrowUp: [0, -1], KeyW: [0, -1], ArrowDown: [0, 1], KeyS: [0, 1], ArrowLeft: [-1, 0], KeyA: [-1, 0], ArrowRight: [1, 0], KeyD: [1, 0] };
+window.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'INPUT') return;
+  if (KEYS[e.code]) { input.keys.add(e.code); input.useKeys = true; e.preventDefault(); }
+});
+window.addEventListener('keyup', (e) => input.keys.delete(e.code));
+window.addEventListener('blur', () => input.keys.clear());
+
+canvas.addEventListener('pointerdown', (e) => {
+  if (e.pointerType === 'mouse') return;
+  input.stick = { id: e.pointerId, ox: e.clientX, oy: e.clientY, x: 0, y: 0 };
+  input.useKeys = false;
+  const s = $('stick');
+  s.hidden = false; s.style.left = `${e.clientX}px`; s.style.top = `${e.clientY}px`;
+  s.firstElementChild.style.transform = '';
+  canvas.setPointerCapture(e.pointerId);
+});
+canvas.addEventListener('pointermove', (e) => {
+  if (e.pointerType === 'mouse') { input.pointer = [e.clientX, e.clientY]; input.useKeys = false; return; }
+  const st = input.stick;
+  if (!st || st.id !== e.pointerId) return;
+  let dx = e.clientX - st.ox, dy = e.clientY - st.oy;
+  const len = Math.hypot(dx, dy), max = 48;
+  if (len > max) { dx *= max / len; dy *= max / len; }
+  st.x = dx / max; st.y = dy / max;
+  $('stick').firstElementChild.style.transform = `translate(${dx}px, ${dy}px)`;
+});
+const endTouch = (e) => {
+  if (input.stick && input.stick.id === e.pointerId) { input.stick = null; $('stick').hidden = true; }
+};
+canvas.addEventListener('pointerup', endTouch);
+canvas.addEventListener('pointercancel', endTouch);
+canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+function readInput() {
+  let x = 0, z = 0;
+  if (input.useKeys && input.keys.size) {
+    for (const k of input.keys) { x += KEYS[k][0]; z += KEYS[k][1]; }
+    const l = Math.hypot(x, z) || 1; x /= l; z /= l;
+  } else if (input.stick) {
+    x = input.stick.x; z = input.stick.y;
+  } else if (input.pointer && !input.useKeys) {
+    const p = game.player;
+    const [sx, sy] = toScreen(p.x, 0, p.z);
+    const dx = input.pointer[0] - sx, dy = input.pointer[1] - sy;
+    const len = Math.hypot(dx, dy), full = Math.min(window.innerWidth, window.innerHeight) * 0.17;
+    if (len > 10) { const m = Math.min(1, len / full) / len; x = dx * m; z = dy * m; }
+  }
+  game.input.x = x; game.input.z = z;
+}
+
+// ---- camera + light --------------------------------------------------------
+let shake = 0;
+function updateCamera(dt) {
+  const f = game.focus;
+  if (game.mode === 'idle') {
+    menuAngle += dt * 0.07;
+    f.set(0, 0, 0);
+    camera.position.set(Math.sin(menuAngle) * 210, 135, Math.cos(menuAngle) * 210);
+    camera.lookAt(0, 0, 0);
+    game.viewRadius = 170;
+  } else {
+    const p = game.player;
+    const k = 1 - Math.exp(-(p.alive ? 9 : 2.5) * dt);
+    f.x += (p.x - f.x) * k; f.z += (p.z - f.z) * k;
+    camR += (p.r - camR) * (1 - Math.exp(-2.2 * dt));
+    const portrait = Math.max(1, Math.min(1.9, 1.15 / camera.aspect));
+    const dist = (17 + camR * 8.5) * portrait;
+    shake = Math.max(0, shake - dt * 2.5);
+    const s = shake * shake * (0.25 + camR * 0.12);
+    camera.position.set(f.x + (Math.random() - 0.5) * s, Math.sin(PITCH) * dist, f.z + Math.cos(PITCH) * dist + (Math.random() - 0.5) * s);
+    camera.lookAt(f.x, 0, f.z);
+    game.viewRadius = dist * 0.8;
+  }
+  // keep the shadow frustum tight around what the camera sees
+  const extent = Math.min(260, Math.max(40, game.viewRadius * 1.35));
+  if (Math.abs(extent - shadowExtent) > shadowExtent * 0.08) {
+    shadowExtent = extent;
+    const c = sun.shadow.camera;
+    c.left = -extent; c.right = extent; c.top = extent; c.bottom = -extent; c.near = 10; c.far = 700;
+    c.updateProjectionMatrix();
+  }
+  sun.target.position.set(f.x, 0, f.z);
+  sun.position.copy(sun.target.position).addScaledVector(SUN_DIR, 350);
+}
+
+// ---- main loop -------------------------------------------------------------
+let last = performance.now(), slow = 0, fastFrames = 0;
+function frame(now) {
+  requestAnimationFrame(frame);
+  const raw = (now - last) / 1000;
+  last = now;
+  const dt = Math.min(raw, 0.1);
+  if (!game) return;
+  if (game.mode !== 'idle') readInput();
+  game.update(dt);
+  updateCamera(dt);
+  game.updateGhosts(camera.position);
+  renderer.render(scene, camera);
+  updateLabels();
+  if (game.mode !== 'idle') updateHud(dt);
+
+  // If the device cannot keep up, drop resolution first and soft shadows second.
+  if (raw > 0.034) slow += raw; else if (++fastFrames > 120) { slow = 0; fastFrames = 0; }
+  if (slow > 2.5) {
+    slow = 0; fastFrames = 0;
+    if (pixelRatio > 1) { pixelRatio = Math.max(1, pixelRatio - 0.5); renderer.setPixelRatio(pixelRatio); resize(); }
+    else if (sun.shadow.mapSize.x > 1024) { sun.shadow.mapSize.set(1024, 1024); sun.shadow.map?.dispose(); sun.shadow.map = null; }
+    else if (sun.castShadow) sun.castShadow = false;
+  }
+}
+requestAnimationFrame(frame);
+
+// ---- boot ------------------------------------------------------------------
+try { const n = localStorage.getItem('gulp-name'); if (n) $('name').value = n; } catch { /* private mode */ }
+const syncMute = () => { $('mute').textContent = sound.muted ? 'Sound off' : 'Sound on'; };
+syncMute();
+$('mute').addEventListener('click', () => { sound.setMuted(!sound.muted); syncMute(); });
+
+function play() {
+  sound.unlock();
+  document.activeElement?.blur();   // otherwise WASD would keep typing into the name field
+  const name = $('name').value.trim().slice(0, 14) || 'You';
+  try { localStorage.setItem('gulp-name', name); } catch { /* private mode */ }
+  start(name);
+}
+$('play').addEventListener('click', play);
+$('again').addEventListener('click', play);
+$('name').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !$('play').disabled) play(); });
+
+loadAssets((p) => { $('progress').firstElementChild.style.width = `${Math.round(p * 100)}%`; })
+  .then((assets) => {
+    game = new Game(scene, assets);
+    bind();
+    game.build((Math.random() * 2 ** 31) | 0, null);
+    makeLabels();
+    $('progress').classList.add('done');
+    $('play').disabled = false;
+    $('play').textContent = 'Play';
+    game.renderer = renderer;
+    window.__game = game;
+  })
+  .catch((err) => {
+    console.error(err);
+    $('play').textContent = 'Could not load';
+    $('progress').classList.add('done');
+  });

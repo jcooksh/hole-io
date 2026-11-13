@@ -71,7 +71,7 @@ function makeLabels() {
     const el = document.createElement('div');
     el.className = h.isPlayer ? 'label me' : 'label';
     el.style.setProperty('--c', hex(h.color));
-    el.innerHTML = `${esc(h.name)} <b></b>`;
+    el.innerHTML = `<i></i>${esc(h.name)} <b></b>`;
     el.dataset.lv = '';
     $('labels').appendChild(el);
     labels.push(el);
@@ -85,6 +85,8 @@ function updateLabels() {
     const show = h.alive && ok && h.shown > 0.3 && x > -80 && y > -40 && x < viewWidth + 80 && y < viewHeight + 40;
     el.style.display = show ? '' : 'none';
     if (el.dataset.lv !== String(h.level)) { el.dataset.lv = h.level; el.lastElementChild.textContent = h.level + 1; }
+    const crown = h === leader ? '\u{1F451}' : '';
+    if (el.firstElementChild.textContent !== crown) el.firstElementChild.textContent = crown;
     if (show) el.style.transform = `translate(${x.toFixed(1)}px, ${(y - 8).toFixed(1)}px) translate(-50%, -100%)`;
   });
 }
@@ -117,7 +119,7 @@ function feed(html) {
   setTimeout(() => el.remove(), 4000);
 }
 
-let boardTimer = 0, lastSecond = -1, lastScore = -1;
+let boardTimer = 0, lastSecond = -1, lastScore = -1, leader = null;
 function updateHud(dt) {
   const t = Math.ceil(game.time);
   if (t !== lastSecond) {
@@ -137,10 +139,11 @@ function updateHud(dt) {
   boardTimer = 0.25;
   const rank = game.ranking();
   const me = rank.indexOf(game.player);
+  leader = rank[0].score > 0 ? rank[0] : null;
   $('meRank').textContent = `#${me + 1}`;
   const rows = rank.slice(0, 5);
   if (me >= 5) rows[4] = game.player;
-  $('board').innerHTML = rows.map((h) => `<li class="${h.isPlayer ? 'me' : ''}${h.alive ? '' : ' dead'}" style="--c:${hex(h.color)}"><i></i><span>${rank.indexOf(h) + 1}. ${esc(h.name)}</span><b>${h.score}</b></li>`).join('');
+  $('board').innerHTML = rows.map((h) => `<li class="${h.isPlayer ? 'me' : ''}${h.alive ? '' : ' dead'}" style="--c:${hex(h.color)}"><i></i><span>${rank.indexOf(h) + 1}. ${h === leader ? '\u{1F451} ' : ''}${esc(h.name)}</span><b>${h.score}</b></li>`).join('');
 }
 
 // ---- game events -----------------------------------------------------------

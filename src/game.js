@@ -8,7 +8,6 @@ export const ROUND_TIME = 120;
 
 const CELL = 10, ORIGIN = -200, CELLS = 40;
 const FIT = 0.92;          // an object fits when its size <= radius * FIT
-const GRAVITY = 45;
 const DIRS = [[1, 0], [0, 1], [-1, 0], [0, -1]];
 const COLORS = [0x2f9bff, 0xff5a5f, 0xffb400, 0x69d84f, 0xb86bff, 0xff7ad9, 0x18c9c0, 0xff8a3d];
 const BOT_NAMES = ['Munchy', 'Pothole Pete', 'Abyss', 'Nom Nom', 'Sinker', 'Gobbler', 'Crater Kate', 'Deep Dan',
@@ -16,13 +15,14 @@ const BOT_NAMES = ['Munchy', 'Pothole Pete', 'Abyss', 'Nom Nom', 'Sinker', 'Gobb
 
 // Holes grow in steps. LEVEL_R[i] is the radius at level i + 1, LEVEL_AT[i] the score that unlocks it.
 export const LEVEL_R = [1, 1.4, 1.9, 2.5, 3.2, 4, 5, 6.2, 7.6, 9.2, 11, 13, 15.5, 18, 21];
-export const LEVEL_AT = [0, 12, 30, 60, 100, 160, 240, 340, 480, 760, 1250, 2000, 3000, 4200, 5600];
+export const LEVEL_AT = [0, 8, 20, 36, 58, 86, 122, 167, 222, 292, 382, 497, 642, 822, 1042];
 export function levelFor(score) {
   let i = 0;
   while (i + 1 < LEVEL_AT.length && score >= LEVEL_AT[i + 1]) i++;
   return i;
 }
-const speedFor = (r) => 9 + 1.4 * r;
+// Small holes are nimble, big ones lumber.
+const speedFor = (r) => 13 / Math.pow(r, 0.18);
 const cellOf = (v) => Math.max(0, Math.min(CELLS - 1, Math.floor((v - ORIGIN) / CELL)));
 const wrapAngle = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 
@@ -73,11 +73,11 @@ class Hole {
     this.x = 0; this.z = 0; this.vx = 0; this.vz = 0;
     this.score = 0; this.level = 0; this.r = LEVEL_R[0]; this.shown = this.r; this.grow = 0; this.flash = 0;
     this.alive = true; this.respawn = 0; this.eaten = 0;
-    this.ai = { think: Math.random() * 0.5, tx: 0, tz: 0, obj: null, prey: null, chase: 0, skip: new Set(), skill: 0.72 + Math.random() * 0.2, aggro: 0.3 + Math.random() * 0.6 };
+    this.ai = { think: Math.random() * 0.5, tx: 0, tz: 0, obj: null, prey: null, chase: 0, skip: new Set(), skill: 0.38 + Math.random() * 0.24, aggro: 0.15 + Math.random() * 0.4, idle: 0 };
     this.group = new THREE.Group();
     this.wall = new THREE.Mesh(wallGeo, wallMat);
     this.ring = new THREE.Mesh(isPlayer ? ringGeoPlayer : ringGeo, ringMaterial(color, isPlayer ? 0xffd21f : color));
-    this.ring.position.y = 0.24;
+    this.ring.position.y = 0.3;
     this.group.add(this.wall, this.ring);
   }
   // 0..1 towards the next level
@@ -143,7 +143,8 @@ export class Game {
     const rnd = this.rnd = city.rnd;
     this.root = new THREE.Group();
     this.scene.add(this.root);
-    this.objects = []; this.falling = []; this.people = []; this.cars = []; this.tall = [];
+    this.objects = []; this.falling = []; this.people = []; this.cars = []; this.tall = []; this.pets = [];
+    this.leaning = new Set(); this.frame = 0;
     this.grid = Array.from({ length: CELLS * CELLS }, () => []);
 
     const byModel = (list) => {
@@ -176,10 +177,11 @@ export class Game {
         const o = {
           kind: p.car ? 'car' : 'static', mesh, idx, x: p.x, y: p.y || 0, z: p.z, rot: p.rot, s, sxz: 1, fit: 1,
           tilt: 0, tiltMax: 0, tax: 1, taz: 0, rf, hd: model.halfDiag * s, h: model.height * s,
-          pts: Math.max(1, Math.round(2 * Math.pow(rf, 1.8))), state: 0, vy: 0, hole: null, cell: -1,
-          foot: model.footprint * s, ghost: false,
+          pts: Math.max(1, Math.round(2.2 * Math.pow(rf, 1.3))), state: 0, vy: 0, hole: null, cell: -1,
+          foot: model.footprint * s, ghost: false, y0: p.y || 0, lean: 0, leanR: 0, leanFrame: -1,
         };
         if (p.car) this.setupCar(o, p.car);
+        else if (p.pet) { o.kind = 'pet'; o.area = p.pet; o.speed = 1.2 + rnd() * 1.2; o.tx = o.x; o.tz = o.z; o.hop = rnd() * 6; o.pts += 3; this.pets.push(o); }
         else if (o.h > 7) this.tall.push(o);
         this.objects.push(o); this.insert(o); this.write(o);
       });
@@ -196,7 +198,7 @@ export class Game {
       const mixer = new THREE.AnimationMixer(mesh);
       const o = {
         kind: 'person', mesh, mixer, x: spec.x, y: 0.15, z: spec.z, rot: 0, s: 1, sxz: 1, fit: 1, tilt: 0, tiltMax: 0,
-        tax: 1, taz: 0, rf: 0.45, hd: 0.5, h: 1.8, pts: 2, state: 0, vy: 0, hole: null, cell: -1,
+        tax: 1, taz: 0, rf: 0.45, hd: 0.5, h: 1.8, pts: 6, state: 0, vy: 0, hole: null, cell: -1,
         speed: 1.1 + rnd() * 0.7, tx: spec.x, tz: spec.z, wait: 0, fleeing: false,
         walk: mixer.clipAction(ch.clips.walk), run: mixer.clipAction(ch.clips.sprint), fall: mixer.clipAction(ch.clips.fall),
       };
@@ -332,6 +334,33 @@ export class Game {
     }
   }
 
+  // ---- animals ------------------------------------------------------------
+  updatePets(dt) {
+    for (const o of this.pets) {
+      if (o.state !== 0) continue;
+      let fx = 0, fz = 0, flee = false;
+      for (const h of this.holes) {
+        if (!h.alive) continue;
+        const dx = o.x - h.x, dz = o.z - h.z, d = Math.hypot(dx, dz);
+        if (d < h.r + 4.5) { flee = true; const w = 1 / Math.max(d, 0.1); fx += dx * w; fz += dz * w; }
+      }
+      if (!flee) {
+        fx = o.tx - o.x; fz = o.tz - o.z;
+        if (fx * fx + fz * fz < 0.2) {
+          o.tx = o.area.cx + (this.rnd() * 2 - 1) * o.area.half; o.tz = o.area.cz + (this.rnd() * 2 - 1) * o.area.half;
+          continue;
+        }
+      }
+      const len = Math.hypot(fx, fz) || 1, speed = flee ? 3.3 : o.speed;
+      o.rot += wrapAngle(Math.atan2(fx, fz) - o.rot) * Math.min(1, dt * 8);
+      o.x = Math.max(1 - BOUND, Math.min(BOUND - 1, o.x + (fx / len) * speed * dt));
+      o.z = Math.max(1 - BOUND, Math.min(BOUND - 1, o.z + (fz / len) * speed * dt));
+      o.hop += dt * (flee ? 16 : 9);
+      o.y = o.y0 + Math.abs(Math.sin(o.hop)) * 0.28;
+      this.moved(o); this.write(o);
+    }
+  }
+
   // ---- pedestrians -------------------------------------------------------
   updatePeople(dt) {
     const holes = this.holes;
@@ -345,7 +374,7 @@ export class Game {
         if (d < h.r + 5.5) { flee = true; const w = 1 / Math.max(d, 0.1); fx += dx * w; fz += dz * w; }
       }
       let speed = o.speed;
-      if (flee) { speed = 3.9; }
+      if (flee) { speed = 4.3; }
       else {
         fx = o.tx - o.x; fz = o.tz - o.z;
         if (fx * fx + fz * fz < 0.25) {
@@ -377,7 +406,10 @@ export class Game {
     const d = Math.hypot(dx, dz);
     if (d < 0.05) { const a = this.rnd() * Math.PI * 2; dx = Math.cos(a); dz = Math.sin(a); } else { dx /= d; dz /= d; }
     o.tax = dz; o.taz = -dx;
-    o.tiltMax = Math.min(1.25, Math.atan2(h.r, o.h)) * (0.55 + this.rnd() * 0.45);
+    // Tall things can only lean as far as the opening allows; small things tumble right over.
+    o.tiltMax = Math.min(1.4, Math.atan2(h.r * 1.15, o.h)) * (0.7 + this.rnd() * 0.3);
+    o.spin = 0.5;                              // tilt speed, builds up as it topples
+    o.g = 17 + 20 / (1 + o.h * 0.25);          // heavy things fall a little slower
     o.fit = Math.min(1, (h.r * 0.96) / o.hd);
     if (o.kind === 'person') { o.walk.stop(); o.run.stop(); o.fall.reset().play(); o.tiltMax *= 0.5; }
     else { o.mesh.geometry.attributes.aFall.setX(o.idx, 1); o.mesh.geometry.attributes.aFall.needsUpdate = true; }
@@ -395,15 +427,40 @@ export class Game {
 
   eatObjects(h) {
     const R = h.r, lim = R * FIT;
-    const x0 = cellOf(h.x - R), x1 = cellOf(h.x + R), z0 = cellOf(h.z - R), z1 = cellOf(h.z + R);
+    const Q = R * 2.4 + 1;
+    const x0 = cellOf(h.x - Q), x1 = cellOf(h.x + Q), z0 = cellOf(h.z - Q), z1 = cellOf(h.z + Q);
     for (let cz = z0; cz <= z1; cz++) for (let cx = x0; cx <= x1; cx++) {
       const cell = this.grid[cx + cz * CELLS];
       for (let i = cell.length - 1; i >= 0; i--) {
         const o = cell[i];
-        if (o.rf > lim) continue;
-        const reach = R - o.rf * 0.4, dx = o.x - h.x, dz = o.z - h.z;
-        if (dx * dx + dz * dz < reach * reach) this.capture(h, o);
+        const fits = o.rf <= lim;
+        const reach = R - o.rf * 0.4, dx = o.x - h.x, dz = o.z - h.z, d2 = dx * dx + dz * dz;
+        if (fits && d2 < reach * reach) { this.capture(h, o); continue; }
+        // Hanging over the rim: it tips into the opening. Things that are too big to go down
+        // sag in and get stuck there until the hole moves on.
+        const edge = R + o.rf * 0.6;
+        if (o.kind === 'person' || o.kind === 'pet' || d2 >= edge * edge) continue;
+        const d = Math.sqrt(d2) || 0.001;
+        let lean = Math.min(1, (edge - d) / o.rf) * Math.min(0.42, Math.atan2(R, o.h) * 0.7);
+        if (!fits) lean *= Math.pow(lim / o.rf, 1.5);
+        if (lean < 0.01) continue;
+        if (o.leanFrame !== this.frame || lean > o.lean) {
+          o.lean = lean; o.leanFrame = this.frame; o.leanR = Math.min(R, o.rf); o.tax = -dz / d; o.taz = dx / d;
+          this.leaning.add(o);
+        }
       }
+    }
+  }
+
+  updateLeaning(dt) {
+    const k = 1 - Math.exp(-9 * dt);
+    for (const o of this.leaning) {
+      if (o.state !== 0) { this.leaning.delete(o); continue; }
+      const want = o.leanFrame === this.frame ? o.lean : 0;
+      o.tilt += (want - o.tilt) * k;
+      o.y = o.y0 - o.tilt * o.leanR * 0.9;      // the low side dips below the rim
+      if (want === 0 && o.tilt < 0.004) { o.tilt = 0; o.y = o.y0; this.leaning.delete(o); }
+      this.write(o);
     }
   }
 
@@ -411,13 +468,21 @@ export class Game {
     const end = -(uniforms.uFade.value + 1);
     for (let i = this.falling.length - 1; i >= 0; i--) {
       const o = this.falling[i], h = o.hole;
-      if (h.alive && Math.abs(h.x - o.x) < h.r + 6 && Math.abs(h.z - o.z) < h.r + 6) {
-        const k = 1 - Math.exp(-5 * dt);
-        o.x += (h.x - o.x) * k; o.z += (h.z - o.z) * k;
+      if (h.alive && o.y > -o.h) {
+        // Drift towards the middle, but never snap. While part of it still pokes out of the
+        // ground it has to stay inside the opening, so a moving hole carries it along.
+        let dx = o.x - h.x, dz = o.z - h.z;
+        const k = Math.exp(-1.6 * dt), reach = Math.max(0, h.r - o.rf * 0.4), d = Math.hypot(dx, dz) * k;
+        dx *= k; dz *= k;
+        if (d > reach && d < h.r + 8) { dx *= reach / d; dz *= reach / d; }
+        if (d < h.r + 8) { o.x = h.x + dx; o.z = h.z + dz; }
       }
-      o.vy -= GRAVITY * dt; o.y += o.vy * dt;
-      o.tilt = Math.min(o.tiltMax, o.tilt + dt * 2.4);
-      o.sxz += (o.fit - o.sxz) * (1 - Math.exp(-9 * dt));
+      o.vy -= o.g * dt; o.y += o.vy * dt;
+      o.spin += (2 + 7 / (1 + o.h * 0.2)) * dt;
+      o.tilt = Math.min(o.tiltMax, o.tilt + o.spin * dt);
+      // squeeze through the opening gradually as it sinks, not all at once
+      const sink = Math.min(1, -o.y / Math.max(1.5, o.h * 0.4));
+      o.sxz = 1 + (o.fit - 1) * sink * sink * (3 - 2 * sink);
       if (o.kind === 'person') o.mixer.update(dt);
       if (o.y < end - o.h) {
         o.state = 2;
@@ -452,7 +517,7 @@ export class Game {
       if (o === h || !o.alive) continue;
       const dx = h.x - o.x, dz = h.z - o.z, d = Math.hypot(dx, dz) || 0.01;
       if (o.r > h.r * 1.1) {
-        const danger = o.r + h.r + 13;
+        const danger = o.r + h.r + 7;
         if (d < danger) { flee = true; const w = (danger - d) / danger / d; fx += dx * w; fz += dz * w; }
       } else if (h.r > o.r * 1.15 && d < 26 + h.r * 2 && d < preyD) { prey = o; preyD = d; }
     }
@@ -461,9 +526,11 @@ export class Game {
       ai.tx = h.x + (fx / l) * 40; ai.tz = h.z + (fz / l) * 40; ai.think = 0.3;
       return;
     }
-    if (prey && this.rnd() < ai.aggro) { ai.prey = prey; ai.think = 0.5; return; }
+    if (prey && this.rnd() < ai.aggro) { ai.prey = prey; ai.think = 0.8; return; }
+    // Bots are easily distracted: now and then they just drift for a moment.
+    if (this.rnd() < 0.3) { ai.idle = 0.6 + this.rnd() * 1.4; ai.think = ai.idle; ai.tx = h.x; ai.tz = h.z; return; }
 
-    const R = 24 + h.r * 4, lim = h.r * FIT;
+    const R = 12 + h.r * 3, lim = h.r * FIT;
     const x0 = cellOf(h.x - R), x1 = cellOf(h.x + R), z0 = cellOf(h.z - R), z1 = cellOf(h.z + R);
     let best = null, bestV = 0;
     for (let cz = z0; cz <= z1; cz++) for (let cx = x0; cx <= x1; cx++) {
@@ -475,7 +542,7 @@ export class Game {
         if (v > bestV) { bestV = v; best = o; }
       }
     }
-    if (best) { if (best !== last) ai.chase = 0; ai.obj = best; ai.think = 0.45 + this.rnd() * 0.3; return; }
+    if (best) { if (best !== last) ai.chase = 0; ai.obj = best; ai.think = 0.9 + this.rnd() * 0.8; return; }
     // nothing edible nearby: roam
     ai.tx = Math.max(-BOUND, Math.min(BOUND, h.x + (this.rnd() * 2 - 1) * 90));
     ai.tz = Math.max(-BOUND, Math.min(BOUND, h.z + (this.rnd() * 2 - 1) * 90));
@@ -487,7 +554,8 @@ export class Game {
     ai.think -= dt;
     if (ai.obj && ai.obj.state !== 0) { ai.obj = null; ai.think = 0; }
     if (ai.prey && (!ai.prey.alive || ai.prey.r * 1.12 > h.r)) { ai.prey = null; ai.think = 0; }
-    if (ai.think <= 0) this.think(h);
+    if (ai.think <= 0) { ai.idle = 0; this.think(h); }
+    if (ai.idle > 0) return [0, 0];
     if (ai.obj) {
       ai.tx = ai.obj.x; ai.tz = ai.obj.z;
       // give up on anything that refuses to be eaten (e.g. a pedestrian that keeps outrunning us)
@@ -501,6 +569,7 @@ export class Game {
 
   // ---- frame -------------------------------------------------------------
   update(dt) {
+    this.frame++;
     if (this.mode === 'playing') {
       this.time -= dt;
       if (this.time <= 0) { this.time = 0; this.mode = 'over'; this.on.over(); }
@@ -538,8 +607,10 @@ export class Game {
       h.sync();
     }
     if (active) this.eatHoles();
+    this.updateLeaning(dt);
     this.updateFalling(dt);
     this.updateCars(dt);
+    this.updatePets(dt);
     this.updatePeople(dt);
     this.syncUniforms();
   }

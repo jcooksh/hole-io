@@ -24,11 +24,15 @@ const KITS = {
   cars: { scale: 1.6, tex: true },
   nature: { scale: 5, tex: false },
   characters: { scale: 2.6, tex: true },
+  industrial: { scale: 10, tex: true },
+  food: { scale: 3, tex: true },      // deliberately oversized snacks
+  skate: { scale: 2.6, tex: true },
+  pets: { scale: 0.6, tex: true },
 };
 
 const GROUND = new Set([
   'roads/road-straight', 'roads/road-crossroad', 'roads/road-intersection', 'roads/road-bend',
-  'roads/road-crossing', 'roads/tile-low', 'nature/ground_grass',
+  'roads/road-crossing', 'roads/tile-low', 'nature/ground_grass', 'skate/floor-concrete',
 ]);
 
 const SCALE_OVERRIDE = {
@@ -36,7 +40,11 @@ const SCALE_OVERRIDE = {
   'cars/firetruck': 2.0, 'cars/garbage-truck': 2.0, 'cars/delivery': 1.9, 'cars/delivery-flat': 1.9,
   'cars/ambulance': 1.9, 'cars/truck': 1.8, 'cars/truck-flat': 1.8, 'cars/tractor': 1.7,
   'nature/statue_obelisk': 8, 'nature/statue_column': 7, 'nature/statue_head': 8,
-  'nature/tent_detailedOpen': 6, 'nature/rock_largeA': 6,
+  'nature/tent_detailedOpen': 6, 'nature/rock_largeA': 6, 'nature/statue_ring': 8, 'nature/canoe': 4,
+  'cars/tractor-shovel': 1.7,
+  'skate/floor-concrete': 10, 'skate/half-pipe': 5, 'skate/ramp': 5, 'skate/steps': 5, 'skate/structure-platform': 5,
+  'skate/obstacle-box': 4, 'skate/rail-high': 4, 'skate/fence': 4, 'skate/skateboard': 1.6, 'skate/scooter': 1.8,
+  'pets/animal-cow': 0.95, 'pets/animal-pig': 0.7, 'pets/animal-cat': 0.5, 'pets/animal-bunny': 0.45, 'pets/animal-chick': 0.4,
 };
 
 const MODELS = {
@@ -51,18 +59,33 @@ const MODELS = {
   suburban: ['building-type-a', 'building-type-b', 'building-type-c', 'building-type-d', 'building-type-e',
     'building-type-f', 'building-type-g', 'building-type-h', 'building-type-j', 'building-type-k',
     'building-type-l', 'building-type-m', 'building-type-n', 'building-type-q', 'building-type-s',
-    'building-type-t', 'tree-large', 'tree-small', 'planter', 'fence'],
+    'building-type-t', 'building-type-i', 'building-type-o', 'building-type-p', 'building-type-r', 'building-type-u',
+    'tree-large', 'tree-small', 'planter', 'fence'],
   cars: ['sedan', 'sedan-sports', 'suv', 'suv-luxury', 'taxi', 'police', 'van', 'truck', 'truck-flat',
     'hatchback-sports', 'delivery', 'delivery-flat', 'ambulance', 'firetruck', 'garbage-truck', 'race',
-    'tractor', 'box', 'cone'],
+    'tractor', 'tractor-shovel', 'race-future', 'box', 'cone'],
   nature: ['ground_grass', 'tree_oak', 'tree_default', 'tree_detailed', 'tree_fat', 'tree_pineRoundA',
     'plant_bush', 'plant_bushLarge', 'flower_redA', 'flower_yellowA', 'flower_purpleA', 'rock_largeA',
     'rock_smallA', 'statue_obelisk', 'statue_column', 'statue_head', 'mushroom_red', 'stump_round',
-    'log_stack', 'tent_detailedOpen', 'sign', 'pot_large'],
+    'log_stack', 'tent_detailedOpen', 'sign', 'pot_large', 'tree_tall', 'tree_simple', 'tree_palm',
+    'campfire_stones', 'canoe', 'statue_ring'],
+  industrial: ['building-a', 'building-c', 'building-d', 'building-e', 'building-f', 'building-h', 'building-k',
+    'building-l', 'building-m', 'building-n', 'building-q', 'building-r', 'chimney-large', 'chimney-medium',
+    'detail-tank', 'detail-tank-large', 'shipping-container-a', 'shipping-container-b', 'shipping-container-c',
+    'solar-panel-landscape-group', 'solar-panel-portrait', 'water-tower', 'windmill'],
+  food: ['burger', 'pizza', 'donut-sprinkles', 'hot-dog', 'ice-cream', 'watermelon', 'pumpkin', 'cake-birthday',
+    'fries', 'soda-can', 'cupcake', 'cheese', 'turkey', 'pizza-box', 'barrel', 'sundae', 'taco', 'pineapple'],
+  skate: ['floor-concrete', 'bench', 'benches', 'half-pipe', 'ramp', 'obstacle-box', 'rail-high', 'steps',
+    'structure-platform', 'pallet', 'skateboard', 'scooter', 'fence'],
+  pets: ['animal-dog', 'animal-cat', 'animal-bunny', 'animal-chick', 'animal-pig', 'animal-cow'],
 };
 
-export const CHARACTERS = ['character-male-a', 'character-male-b', 'character-male-c', 'character-male-d',
-  'character-female-a', 'character-female-b', 'character-female-c', 'character-female-d', 'character-worker'];
+// Animated pedestrians: [kit, file]. The skaters share the mini-character rig and animations.
+const CHARACTERS = [
+  ...['male-a', 'male-b', 'male-c', 'male-d', 'male-e', 'male-f', 'female-a', 'female-b', 'female-c', 'female-d',
+    'female-e', 'female-f', 'worker'].map((n) => ['characters', `character-${n}`]),
+  ['skate', 'character-skate-boy'], ['skate', 'character-skate-girl'],
+];
 export const CHARACTER_SCALE = KITS.characters.scale;
 
 const HOLE_GLSL = `
@@ -111,6 +134,14 @@ function patch(material, kind) {
     } else {
       frag = frag
         .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
+          // Anything at ground level directly over a hole is cut away too, otherwise the floor of a
+          // building you slide under would fight with the hole for the same pixels.
+          if (vFall != 1.0 && vWPos.y < 0.75) {
+            for (int i = 0; i < ${MAX_HOLES}; i++) {
+              vec3 h = uHoles[i];
+              if (h.z > 0.0 && distance(vWPos.xz, h.xy) < h.z * 1.12) discard;
+            }
+          }
           // vFall: 0 = standing, 1 = falling into a hole, 2 = "ghost" (blocks the camera's view of the player)
           float hNoise = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
           if (vFall > 1.5) {
@@ -199,16 +230,16 @@ export async function loadAssets(onProgress) {
         for (const m of Object.values(materials[kit])) { m.map = t; m.needsUpdate = true; }
       }));
     }
-    const skinned = kit === 'characters';
     materials[kit] = {
-      object: patch(new THREE.MeshLambertMaterial({ map, vertexColors: !skinned, side: THREE.DoubleSide }), 'object'),
+      object: patch(new THREE.MeshLambertMaterial({ map, vertexColors: true, side: THREE.DoubleSide }), 'object'),
+      skinned: patch(new THREE.MeshLambertMaterial({ map, side: THREE.DoubleSide }), 'object'),
       ground: patch(new THREE.MeshLambertMaterial({ map, vertexColors: true }), 'ground'),
     };
   }
 
   const jobs = [];
   for (const [kit, names] of Object.entries(MODELS)) for (const n of names) jobs.push({ kit, file: n });
-  for (const n of CHARACTERS) jobs.push({ kit: 'characters', file: n });
+  for (const [kit, file] of CHARACTERS) jobs.push({ kit, file, character: true });
   let done = 0;
   const total = jobs.length + texJobs.length;
   const tick = () => onProgress && onProgress(++done / total);
@@ -216,12 +247,12 @@ export async function loadAssets(onProgress) {
 
   const models = {};
   const characters = [];
-  await Promise.all(jobs.map(async ({ kit, file }) => {
+  await Promise.all(jobs.map(async ({ kit, file, character }) => {
     const gltf = await loader.loadAsync(`${ASSET_URL}models/${kit}/${file}.glb`);
     const name = `${kit}/${file}`;
-    if (kit === 'characters') {
+    if (character) {
       gltf.scene.traverse((o) => {
-        if (o.isMesh) { o.material = materials.characters.object; o.castShadow = true; }
+        if (o.isMesh) { o.material = materials[kit].skinned; o.castShadow = true; }
       });
       // Generous culling spheres, measured once in the rest pose and reused by every clone.
       gltf.scene.updateMatrixWorld(true);

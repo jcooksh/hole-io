@@ -50,6 +50,8 @@ button { touch-action: manipulation; }
   will-change: transform;
 }
 .label.me { background: var(--c); color: #fff; border-bottom-color: rgba(0, 0, 0, 0.25); }
+.label i { font-style: normal; margin-right: 3px; }
+.label i:empty { display: none; }
 .label b {
   display: inline-block; min-width: 16px; margin-left: 4px; padding: 2px 4px 1px; border-radius: 999px; text-align: center;
   font: 800 11px/1 var(--body); background: #fff; color: var(--ink);
@@ -57,16 +59,16 @@ button { touch-action: manipulation; }
 
 .pop {
   position: absolute; left: 0; top: 0;
-  font: 900 30px/1 var(--body); color: #ffe23a; letter-spacing: 0.01em;
-  -webkit-text-stroke: 7px var(--ink); paint-order: stroke fill;
+  font: 800 28px/1 var(--body); color: rgba(255, 255, 255, 0.92); letter-spacing: 0.01em;
+  -webkit-text-stroke: 4px rgba(20, 32, 46, 0.5); paint-order: stroke fill;
   animation: pop 1s ease-out forwards;
 }
-.pop.big { font-size: 48px; color: #fff; }
+.pop.big { font-size: 44px; color: #fff; }
 @keyframes pop {
   0% { opacity: 0; margin-top: 8px; scale: 0.5; }
   14% { opacity: 1; scale: 1.25; }
   26% { scale: 1; }
-  75% { opacity: 1; }
+  70% { opacity: 0.9; }
   100% { opacity: 0; margin-top: -60px; }
 }
 
@@ -217,7 +219,7 @@ button:focus-visible { outline: 3px solid var(--sun); outline-offset: 3px; }
   #me { padding: 8px 10px; min-width: min(104px, 100%); }
   #me span { font-size: 18px; }
   #me small { display: none; }
-  .pop { font-size: 24px; -webkit-text-stroke-width: 6px; }
+  .pop { font-size: 22px; -webkit-text-stroke-width: 3px; }
   .pop.big { font-size: 38px; }
   #board { font-size: 11px; min-width: min(128px, 100%); padding: 6px; }
   #banner { font-size: 28px; -webkit-text-stroke-width: 6px; }

@@ -80,17 +80,16 @@ button { touch-action: manipulation; }
 .hud-top {
   display: grid; align-items: start; gap: 8px;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  grid-template-areas: "score timer board";
+  grid-template-areas: "score stage board";
 }
 .hud-bottom { display: flex; align-items: end; justify-content: space-between; gap: 8px; margin-top: auto; }
 
-#timer {
-  grid-area: timer; justify-self: center;
-  font: 800 30px/1 var(--body); font-variant-numeric: tabular-nums;
-  padding: 10px 18px; border-radius: 14px; background: var(--panel);
+#stage {
+  grid-area: stage; justify-self: center; text-align: center;
+  padding: 8px 16px; border-radius: 14px; background: var(--panel);
 }
-#timer.low { background: #d6362f; animation: pulse 1s ease-in-out infinite; }
-@keyframes pulse { 50% { scale: 1.08; } }
+#stage b { display: block; font: 700 11px/1.2 var(--body); letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.75; }
+#stage span { display: block; font: 800 20px/1.15 var(--body); white-space: nowrap; }
 
 #me {
   grid-area: score; justify-self: start; min-width: 150px;
@@ -214,8 +213,20 @@ button:focus-visible { outline: 3px solid var(--sun); outline-offset: 3px; }
 #results li.me em { color: #fff; }
 #results li.me i { box-shadow: 0 0 0 2px #fff; }
 
+/* name tags on notable things nearby, and the fade between stages */
+#tags { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
+.nametag {
+  position: absolute; left: 0; top: 0; white-space: nowrap; will-change: transform;
+  font: 700 12px/1 var(--body); color: #fff; padding: 3px 7px; border-radius: 6px;
+  background: rgba(16, 26, 40, 0.55); text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+.nametag.big { opacity: 0.55; }
+#fade { position: fixed; inset: 0; background: #000; opacity: 0; pointer-events: none; transition: opacity 0.45s ease; }
+#fade.on { opacity: 1; }
+
 @media (max-width: 560px), (max-height: 520px) {
-  #timer { font-size: 22px; padding: 8px 12px; }
+  #stage { padding: 6px 12px; }
+  #stage span { font-size: 16px; }
   #me { padding: 8px 10px; min-width: min(104px, 100%); }
   #me span { font-size: 18px; }
   #me small { display: none; }
@@ -228,9 +239,9 @@ button:focus-visible { outline: 3px solid var(--sun); outline-offset: 3px; }
 @media (max-width: 460px) {
   .hud-top {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    grid-template-areas: "timer board" "score board";
+    grid-template-areas: "stage board" "score board";
   }
-  #timer { justify-self: start; }
+  #stage { justify-self: start; text-align: left; }
 }
 @media (max-height: 520px) {
   .how li + li { display: none; }
@@ -254,5 +265,5 @@ button:focus-visible { outline: 3px solid var(--sun); outline-offset: 3px; }
   .how-touch { display: inline; }
 }
 @media (prefers-reduced-motion: reduce) {
-  #timer.low { animation: none; }
+  #fade { transition: none; }
 }

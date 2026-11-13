@@ -44,7 +44,7 @@ const FACTORIES = 'adefhkmn'.split('').map((c) => `industrial/building-${c}`);
 const FACTORIES_WIDE = 'clqr'.split('').map((c) => `industrial/building-${c}`);
 const CONTAINERS = ['industrial/shipping-container-a', 'industrial/shipping-container-b', 'industrial/shipping-container-c'];
 
-export function generateCity(seed) {
+export function generateCity(seed, theme) {
   const rnd = mulberry32(seed);
   const pick = (arr) => arr[Math.floor(rnd() * arr.length)];
   const range = (a, b) => a + rnd() * (b - a);

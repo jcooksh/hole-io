@@ -1,8 +1,11 @@
 # Gulp City
 
 A browser game where you are a hole in the ground. Slide under things smaller than you, they fall
-in, you get bigger. Start with traffic cones and pedestrians, finish with skyscrapers. Seven other
-holes are eating the same town, and a bigger hole can swallow a smaller one. Two minutes per round.
+in, you get bigger. You start with traffic cones and pedestrians and work up to skyscrapers. Eat
+the whole city and the game moves up a size: the countryside (whole towns are one bite), the Earth
+(a real globe, where you eat countries), the solar system, the Milky Way, the universe, and finally
+the multiverse. Seven other holes are eating the same world; one of a higher level can swallow you,
+and that ends the run. There is no clock.
 
 ## Play
 
@@ -39,8 +42,9 @@ Then open http://localhost:8000.
 
 - `index.html`, `src/style.css` - page, menus and HUD
 - `src/main.js` - renderer, camera, input, HUD
-- `src/game.js` - holes, swallowing, bots, traffic, pedestrians
-- `src/city.js` - random city layout (new town every round)
+- `src/game.js` - the rules shared by every stage: holes, swallowing, levels, bots, traffic, pedestrians
+- `src/stages.js` - the seven worlds (city, countryside, Earth, solar system, galaxy, universe, multiverse)
+- `src/city.js` - random city layout (new town every run)
 - `src/assets.js` - model loading, instancing prep, the shader patch that cuts the holes
 - `src/audio.js` - sound effects
 - `vendor/three/` - three.js r170

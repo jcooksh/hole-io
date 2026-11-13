@@ -1,6 +1,7 @@
 import * as THREE from 'three';
-import { loadAssets } from './assets.js';
+import { createAssets } from './assets.js';
 import { Game } from './game.js';
+import { STAGES, prepareStage, buildStage } from './stages.js';
 import { Sound } from './audio.js';
 
 const $ = (id) => document.getElementById(id);
@@ -22,7 +23,8 @@ const SKY = 0x9fd8ff;
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(SKY);
 scene.fog = new THREE.Fog(SKY, 300, 900);
-scene.add(new THREE.HemisphereLight(0xffffff, 0x8a94a6, 1.75));
+const hemi = new THREE.HemisphereLight(0xffffff, 0x8a94a6, 1.75);
+scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xfff2dd, 2.1);
 const SUN_DIR = new THREE.Vector3(0.55, 1, 0.38).normalize();
 sun.castShadow = true;
@@ -31,7 +33,7 @@ sun.shadow.bias = -0.0004;
 sun.shadow.normalBias = 0.35;
 scene.add(sun, sun.target);
 
-const camera = new THREE.PerspectiveCamera(42, 1, 1, 1600);
+const camera = new THREE.PerspectiveCamera(42, 1, 1, 4000);
 const PITCH = 1.02;
 const aim = camera.clone();
 let camR = 1, shadowExtent = 0, menuAngle = 0.6;
@@ -51,7 +53,11 @@ resize();
 
 // ---- state -----------------------------------------------------------------
 const sound = new Sound();
+const assets = createAssets();
 let game = null;
+// one playthrough: which map, which stage, when it started
+const run = { name: 'You', theme: null, stage: 0, startedAt: 0, busy: false };
+let shadowsOK = true;
 const input = { pointer: null, stick: null, keys: new Set(), useKeys: false };
 
 // ---- HUD -------------------------------------------------------------------
@@ -59,9 +65,14 @@ const labels = [];
 const popPool = [];
 const _v = new THREE.Vector3();
 
+// Screen position of a point given in stage coordinates (works on the flat stages and on the globe).
 function toScreen(x, y, z) {
-  _v.set(x, y, z).project(camera);
-  return [(_v.x * 0.5 + 0.5) * viewWidth, (-_v.y * 0.5 + 0.5) * viewHeight, _v.z < 1];
+  game.worldOf(x, z, y, _v);
+  let ok = true;
+  // on a globe, anything on the far side is hidden
+  if (game.kind === 'globe') ok = (_v.x - 0) * (camera.position.x - _v.x) + (_v.y + game.globeR) * (camera.position.y - _v.y) + _v.z * (camera.position.z - _v.z) > 0;
+  _v.project(camera);
+  return [(_v.x * 0.5 + 0.5) * viewWidth, (-_v.y * 0.5 + 0.5) * viewHeight, ok && _v.z < 1];
 }
 
 function makeLabels() {
@@ -89,6 +100,41 @@ function updateLabels() {
     if (el.firstElementChild.textContent !== crown) el.firstElementChild.textContent = crown;
     if (show) el.style.transform = `translate(${x.toFixed(1)}px, ${(y - 8).toFixed(1)}px) translate(-50%, -100%)`;
   });
+}
+
+// Name tags for notable things nearby (countries, planets, landmarks ...).
+const tags = [];
+let tagTimer = 0, tagged = [];
+function updateTags(dt) {
+  const box = $('tags');
+  if (!game.named.length || game.mode === 'idle') { if (tagged.length) { tagged = []; for (const t of tags) t.style.display = 'none'; } return; }
+  tagTimer -= dt;
+  if (tagTimer <= 0) {
+    tagTimer = 0.25;
+    const p = game.player, reach = game.viewRadius * 1.1 + 6;
+    tagged = [];
+    for (const o of game.named) {
+      if (o.state !== 0) continue;
+      game.sep(p.x, p.z, o.x, o.z);
+      const d = Math.hypot(game.dx, game.dz) - o.rf;
+      if (d < reach) tagged.push([d - o.rf * 2, o]);
+    }
+    tagged.sort((a, b) => a[0] - b[0]);
+    tagged = tagged.slice(0, 7).map((t) => t[1]);
+  }
+  const lim = game.player.r * 0.92;
+  for (let i = 0; i < 7; i++) {
+    let el = tags[i];
+    if (!el) { el = tags[i] = document.createElement('div'); el.className = 'nametag'; box.appendChild(el); }
+    const o = tagged[i];
+    if (!o || o.state !== 0) { el.style.display = 'none'; continue; }
+    const [x, y, ok] = toScreen(o.x, Math.min(o.h, 3) + 0.5, o.z);
+    if (!ok || x < -60 || y < -20 || x > viewWidth + 60 || y > viewHeight + 20) { el.style.display = 'none'; continue; }
+    el.style.display = '';
+    if (el.textContent !== o.name) el.textContent = o.name;
+    el.classList.toggle('big', o.rf > lim || (o.boss && game.player.level < 11));
+    el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, -50%)`;
+  }
 }
 
 function popup(text, x, y, z, big) {
@@ -119,74 +165,132 @@ function feed(html) {
   setTimeout(() => el.remove(), 4000);
 }
 
-let boardTimer = 0, lastSecond = -1, lastScore = -1, leader = null;
+let boardTimer = 0, lastScore = -1, leader = null;
 function updateHud(dt) {
-  const t = Math.ceil(game.time);
-  if (t !== lastSecond) {
-    lastSecond = t;
-    $('timer').textContent = `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
-    $('timer').classList.toggle('low', t <= 10 && game.mode === 'playing');
-    if (t <= 5 && t > 0 && game.mode === 'playing') sound.play('click_001', { rate: 1.5, gain: 0.7 });
-  }
   if (game.player.score !== lastScore) {
     lastScore = game.player.score;
     $('meScore').textContent = lastScore;
     $('meLevel').textContent = `Level ${game.player.level + 1}`;
-    $('meBar').style.width = `${Math.round(game.player.progress * 100)}%`;
+    $('meBar').style.width = `${Math.round(game.progress(game.player) * 100)}%`;
   }
   boardTimer -= dt;
   if (boardTimer > 0) return;
   boardTimer = 0.25;
   const rank = game.ranking();
   const me = rank.indexOf(game.player);
-  leader = rank[0].score > 0 ? rank[0] : null;
+  leader = rank[0].xp > 0 ? rank[0] : null;
   $('meRank').textContent = `#${me + 1}`;
   const rows = rank.slice(0, 5);
   if (me >= 5) rows[4] = game.player;
-  $('board').innerHTML = rows.map((h) => `<li class="${h.isPlayer ? 'me' : ''}${h.alive ? '' : ' dead'}" style="--c:${hex(h.color)}"><i></i><span>${rank.indexOf(h) + 1}. ${h === leader ? '\u{1F451} ' : ''}${esc(h.name)}</span><b>${h.score}</b></li>`).join('');
+  $('board').innerHTML = rows.map((h) => `<li class="${h.isPlayer ? 'me' : ''}${h.alive ? '' : ' dead'}" style="--c:${hex(h.color)}"><i></i><span>${rank.indexOf(h) + 1}. ${h === leader ? '\u{1F451} ' : ''}${esc(h.name)}</span><b>Lv ${h.level + 1}</b></li>`).join('');
 }
 
 // ---- game events -----------------------------------------------------------
 function bind() {
   game.on.eat = (h, o) => {
     if (!h.isPlayer) return;
-    const big = o.pts >= 20;
-    popup(`+${o.pts}`, o.x, Math.min(o.h, 4) + 1.5, o.z, big);
+    const big = o.pts >= 20 || !!o.name;
+    popup(o.name ? `+${o.pts} ${o.name}` : `+${o.pts}`, o.x, Math.min(o.h, 4) + 1.5, o.z, big);
     const rate = Math.max(0.45, Math.min(1.7, 1.55 - o.rf * 0.13)) * (0.94 + Math.random() * 0.12);
     if (big) { sound.play('drop_004', { rate: rate * 0.9, gain: 1 }); shake = Math.min(1, shake + 0.35 + o.rf * 0.04); }
     else sound.play(o.rf < 0.8 ? 'drop_001' : o.rf < 2 ? 'drop_002' : 'drop_003', { rate, gain: 0.75, gap: 0.035 });
   };
   game.on.sizeUp = (h) => { banner(`Level ${h.level + 1}!`); sound.play('confirmation_002', { gain: 0.8 }); boardTimer = 0; };
+  game.on.bossReady = (boss) => { setTimeout(() => banner(`Big enough. Swallow ${boss.name}!`), 1400); };
   game.on.swallow = (a, b, gain) => {
     feed(`<b style="--c:${hex(a.color)}">${esc(a.name)}</b> swallowed <b style="--c:${hex(b.color)}">${esc(b.name)}</b>`);
-    if (b.isPlayer) { banner(`Swallowed by ${a.name}!`, true); sound.play('error_006'); shake = 1; }
+    if (b.isPlayer) { sound.play('error_006'); shake = 1; }
     else if (a.isPlayer) { banner(`You swallowed ${b.name}!`); sound.play('confirmation_004'); shake = 0.8; popup(`+${gain}`, b.x, 2, b.z, true); }
   };
-  game.on.respawn = (h) => { if (h.isPlayer) { banner('Back in!'); sound.play('maximize_008'); } };
-  game.on.over = () => {
+  // Swallowed by a bigger hole: that is the end of the run.
+  game.on.lost = (by) => {
     clearStick();
-    const rank = game.ranking(), place = rank.indexOf(game.player) + 1;
-    $('endTitle').textContent = place === 1 ? 'You win!' : 'Time!';
-    $('endSub').textContent = place === 1
-      ? `Biggest hole in town with ${game.player.score} points.`
-      : `You finished #${place} with ${game.player.score} points.`;
-    $('results').innerHTML = rank.map((h, i) => `<li class="${h.isPlayer ? 'me' : ''}" style="--c:${hex(h.color)}"><em>${i + 1}</em><i></i><span>${esc(h.name)}</span><b>${h.score}</b></li>`).join('');
-    sound.play(place === 1 ? 'confirmation_004' : 'select_005');
-    $('timer').classList.remove('low');
-    setTimeout(() => { $('end').hidden = false; $('again').focus({ preventScroll: true }); }, 900);
+    banner(`Swallowed by ${by.name}!`, true);
+    showEnd('Swallowed!', `${by.name} ate you in stage ${run.stage + 1}, ${STAGES[run.stage].name}.`);
+  };
+  // The stage is finished: let the hole swallow what is left, then move up a scale.
+  game.on.stageDone = (index) => {
+    clearStick();
+    banner(STAGES[index].done, true);
+    sound.play('confirmation_004');
+    shake = 1;
+    setTimeout(() => nextStage(index + 1), 2500);
   };
 }
 
-function start(playerName) {
-  game.build((Math.random() * 2 ** 31) | 0, playerName);
+function showEnd(title, sub) {
+  const p = game.player, secs = Math.round((performance.now() - run.startedAt) / 1000);
+  $('endTitle').textContent = title;
+  $('endSub').textContent = sub;
+  $('results').innerHTML = [
+    ['Stage reached', `${run.stage + 1} of ${STAGES.length} · ${STAGES[run.stage].name}`],
+    ['Level', p.level + 1], ['Things swallowed', p.eaten], ['Points', p.score],
+    ['Time', `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`],
+  ].map(([k, v]) => `<li><span>${k}</span><b>${v}</b></li>`).join('');
+  setTimeout(() => { $('end').hidden = false; $('again').focus({ preventScroll: true }); }, 1100);
+}
+
+// Sky, fog and light for the stage that was just built.
+function applySky() {
+  const sky = game.stage.sky || {};
+  scene.background = sky.bg || new THREE.Color(sky.color ?? SKY);
+  scene.backgroundIntensity = sky.bgIntensity ?? 1;
+  scene.fog = sky.fog ? new THREE.Fog(sky.color ?? SKY, sky.fog[0], sky.fog[1]) : null;
+  hemi.intensity = sky.hemi ?? 1.75;
+  sun.intensity = sky.sun ?? 2.1;
+  sun.castShadow = shadowsOK && game.kind === 'ground';
+  document.querySelector('meta[name="theme-color"]').content = hex(sky.color ?? SKY);
+}
+
+function enterStage(index, playerName, carry) {
+  run.stage = index;
+  game.build(buildStage(assets, index, { theme: run.theme }, (Math.random() * 2 ** 31) | 0), index, playerName, carry);
+  applySky();
   makeLabels();
+  tagged = []; tagTimer = 0;
   $('popups').textContent = ''; $('feed').textContent = '';
-  camR = game.player.r; lastSecond = -1; boardTimer = 0; shake = 0;
-  clearStick(); input.keys.clear(); input.useKeys = false; lastScore = -1;
-  $('menu').hidden = true; $('end').hidden = true;
-  $('hud').hidden = !playerName;
+  camR = game.player.r; boardTimer = 0; shake = 0; lastScore = -1;
+  clearStick(); input.keys.clear(); input.useKeys = false;
+  $('stageNo').textContent = `Stage ${index + 1} / ${STAGES.length}`;
+  $('stageName').textContent = STAGES[index].name;
   updateCamera(0);
-  if (playerName) { banner('Go!'); sound.play('maximize_008'); }
+  // fetch the next world in the background so the hand-over is instant
+  if (playerName && index + 1 < STAGES.length) prepareStage(assets, index + 1, { theme: run.theme }).catch(() => {});
+}
+
+async function nextStage(index) {
+  if (index >= STAGES.length) {
+    showEnd('You ate everything', 'City, planet, galaxy, universe, and whatever was outside that. Nothing is left.');
+    return;
+  }
+  const fade = $('fade');
+  fade.classList.add('on');
+  const carry = { score: game.player.score, eaten: game.player.eaten };
+  try {
+    await Promise.all([prepareStage(assets, index, { theme: run.theme }), new Promise((r) => setTimeout(r, 450))]);
+    enterStage(index, run.name, carry);
+    banner(`Stage ${index + 1}: ${STAGES[index].name}`);
+    sound.play('maximize_008');
+  } catch (err) {
+    console.error(err);
+    showEnd('Could not load the next stage', 'Check your connection and try again.');
+  }
+  fade.classList.remove('on');
+}
+
+async function start(playerName) {
+  if (run.busy) return;
+  run.busy = true;
+  run.name = playerName; run.startedAt = performance.now();
+  $('end').hidden = true;
+  try {
+    await prepareStage(assets, 0, { theme: run.theme });
+    enterStage(0, playerName, null);
+    $('menu').hidden = true;
+    $('hud').hidden = false;
+    banner('Go!'); sound.play('maximize_008');
+  } catch (err) { console.error(err); }
+  run.busy = false;
 }
 
 // ---- input -----------------------------------------------------------------
@@ -264,7 +368,7 @@ function readInput() {
     // Mouse: the hole heads straight for the spot on the ground under the cursor.
     _ndc.set((input.pointer[0] / viewWidth) * 2 - 1, 1 - (input.pointer[1] / viewHeight) * 2);
     raycaster.setFromCamera(_ndc, aim);
-    if (raycaster.ray.intersectPlane(GROUND, _v)) { game.input.point = true; game.input.tx = _v.x; game.input.tz = _v.z; return; }
+    if (raycaster.ray.intersectPlane(GROUND, _v)) { game.pointAt(_v.x, _v.z); return; }
   }
   game.input.point = false;
   game.input.x = x; game.input.z = z;
@@ -279,14 +383,18 @@ function updateCamera(dt) {
     f.set(0, 0, 0);
     camera.position.set(Math.sin(menuAngle) * 210, 135, Math.cos(menuAngle) * 210);
     camera.lookAt(0, 0, 0);
+    aim.position.copy(camera.position); aim.lookAt(0, 0, 0); aim.updateMatrixWorld();
     game.viewRadius = 170;
   } else {
     const p = game.player;
-    // With the mouse the hole sits under the cursor and the view drifts after it; with keys or
-    // touch the view stays glued to the hole.
-    const k = 1 - Math.exp(-(!p.alive ? 2.5 : game.input.point ? 3.2 : 10) * dt);
-    f.x += (p.x - f.x) * k; f.z += (p.z - f.z) * k;
-    camR += (p.r - camR) * (1 - Math.exp(-1.1 * dt));
+    if (game.kind === 'globe') f.set(0, 0, 0);        // the planet turns under the hole instead
+    else {
+      // With the mouse the hole sits under the cursor and the view drifts after it; with keys or
+      // touch the view stays glued to the hole.
+      const k = 1 - Math.exp(-(!p.alive ? 2.5 : game.input.point ? 3.2 : 10) * dt);
+      f.x += (p.x - f.x) * k; f.z += (p.z - f.z) * k;
+    }
+    camR += (p.r - camR) * (1 - Math.exp(-(game.mode === 'transition' ? 2.4 : 1.1) * dt));
     const portrait = Math.max(1, Math.min(1.9, 1.15 / camera.aspect));
     const dist = (20 + camR * 6) * portrait;
     shake = Math.max(0, shake - dt * 2.5);
@@ -324,6 +432,7 @@ function frame(now) {
   game.updateGhosts(camera.position);
   renderer.render(scene, camera);
   updateLabels();
+  updateTags(dt);
   if (game.mode !== 'idle') updateHud(dt);
 
   // If the device cannot keep up, drop resolution first and soft shadows second.
@@ -332,7 +441,7 @@ function frame(now) {
     slow = 0; fastFrames = 0;
     if (pixelRatio > 1) { pixelRatio = Math.max(1, pixelRatio - 0.5); renderer.setPixelRatio(pixelRatio); }
     else if (sun.shadow.mapSize.x > 1024) { sun.shadow.mapSize.set(1024, 1024); sun.shadow.map?.dispose(); sun.shadow.map = null; }
-    else if (sun.castShadow) sun.castShadow = false;
+    else if (shadowsOK) { shadowsOK = false; sun.castShadow = false; }
   }
 }
 requestAnimationFrame(frame);
@@ -375,17 +484,17 @@ $('startForm').addEventListener('submit', (e) => {
 });
 $('again').addEventListener('click', play);
 
-loadAssets((p) => { $('progress').firstElementChild.style.width = `${Math.round(p * 100)}%`; })
-  .then((assets) => {
+const showProgress = (p) => { $('progress').firstElementChild.style.width = `${Math.round(p * 100)}%`; };
+prepareStage(assets, 0, { theme: run.theme }, showProgress)
+  .then(() => {
     game = new Game(scene, assets);
     bind();
-    game.build((Math.random() * 2 ** 31) | 0, null);
-    makeLabels();
+    enterStage(0, null, null);     // the menu shows a live city with the bots already at work
     $('progress').classList.add('done');
     $('play').disabled = false;
     $('play').textContent = 'Play';
     game.renderer = renderer; game.camera = camera;
-    window.__game = game;
+    window.__game = game; window.__stage = nextStage;     // handy when testing a later stage
   })
   .catch((err) => {
     console.error(err);

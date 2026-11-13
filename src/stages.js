@@ -51,9 +51,10 @@ const city = {
 
 // ---- 2. countryside: whole towns are single bites ----------------------------
 const K = 0.035;     // one unit is roughly 30 m here
-const LOW = 'abcdefghijklm'.split('').map((c) => `commercial/low-detail-building-${c}`);
-const HOUSES = 'abcdefghijklmnopqrstu'.split('').map((c) => `suburban/building-type-${c}`);
-const TREES = ['nature/tree_oak', 'nature/tree_default', 'nature/tree_detailed', 'nature/tree_fat', 'nature/tree_pineRoundA', 'nature/tree_tall'];
+// Everything here is seen from far away, so only the lightest models are used.
+const LOW = 'cdefkn'.split('').map((c) => `commercial/low-detail-building-${c}`);
+const HOUSES = ['hexagon/unit-house', 'hexagon/unit-house', 'hexagon/unit-mansion'];
+const TREES = ['nature/tree_fat', 'nature/tree_simple', 'nature/tree_tall', 'nature/tree_default'];
 
 function composeRegion(assets) {
   if (assets.models['region/giga']) return;
@@ -64,22 +65,22 @@ function composeRegion(assets) {
     for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
       const d = Math.hypot(i - half, j - half) / (half + 0.5);
       if (d > 1.02 || chance(0.14) || i === Math.round(half) || j === Math.round(half * 0.5)) continue;
-      parts.push({ model: pick(LOW), x: (i - half) * 11 + range(-1.5, 1.5), z: (j - half) * 11 + range(-1.5, 1.5), rot: Math.floor(rnd() * 4) * Math.PI / 2, s: 1.6, sy: 0.35 + peak * Math.exp(-d * d * 3.2) * range(0.6, 1.2) });
+      parts.push({ model: pick(LOW), x: (i - half) * 15.4 + range(-2, 2), z: (j - half) * 15.4 + range(-2, 2), rot: Math.floor(rnd() * 4) * Math.PI / 2, s: 2.3, sy: 0.3 + peak * Math.exp(-d * d * 3.2) * range(0.6, 1.2) });
     }
     compose(assets, name, parts, K);
   };
-  for (let v = 0; v < 3; v++) skyline(`region/town-${v}`, 8, 0.7);
-  for (let v = 0; v < 2; v++) skyline(`region/city-${v}`, 16, 1.3);
-  skyline('region/metro', 28, 1.9);
-  skyline('region/mega', 44, 2.5);
-  skyline('region/giga', 56, 3.2);
+  for (let v = 0; v < 3; v++) skyline(`region/town-${v}`, 6, 0.5);
+  for (let v = 0; v < 2; v++) skyline(`region/city-${v}`, 12, 0.9);
+  skyline('region/metro', 20, 1.3);
+  skyline('region/mega', 32, 1.7);
+  skyline('region/giga', 40, 2.2);
   const ring = (name, count, radius, extra) => {
     const parts = [];
     for (let k = 0; k < count; k++) {
       const a = (k / count) * TAU + range(-0.2, 0.2), r = radius * (k % 2 ? 1 : 0.55) + range(-2, 2);
-      parts.push({ model: pick(HOUSES), x: Math.cos(a) * r, z: Math.sin(a) * r, rot: Math.atan2(Math.cos(a), Math.sin(a)) });
+      parts.push({ model: pick(HOUSES), x: Math.cos(a) * r, z: Math.sin(a) * r, rot: Math.atan2(Math.cos(a), Math.sin(a)), s: 2.4 });
     }
-    for (let k = 0; k < extra; k++) { const a = spin(), r = range(0, radius + 8); parts.push({ model: pick(['suburban/tree-large', 'suburban/tree-small']), x: Math.cos(a) * r, z: Math.sin(a) * r, s: range(1, 1.5) }); }
+    for (let k = 0; k < extra; k++) { const a = spin(), r = range(0, radius + 8); parts.push({ model: 'hexagon/unit-tree', x: Math.cos(a) * r, z: Math.sin(a) * r, s: range(2.4, 3.6) }); }
     compose(assets, name, parts, K);
   };
   for (let v = 0; v < 3; v++) ring(`region/hamlet-${v}`, 3, 13, 3);
@@ -137,15 +138,15 @@ const region = {
     add(['region/giga'], 2); add(['region/mega'], 3); add(['nature/rock_tallA', 'nature/rock_tallB'], 4, 8.5, 11);
     add(['region/metro'], 6); add(['nature/rock_tallA', 'nature/rock_tallB', 'nature/rock_largeB'], 14, 3.4, 7.5);
     add(['region/woods'], 12); add(['region/city-0', 'region/city-1'], 16);
-    add(['region/works-0', 'region/works-1'], 20); add(['nature/rock_tallC', 'nature/rock_tallD', 'nature/rock_largeC'], 36, 1.2, 2.8);
+    add(['region/works-0', 'region/works-1'], 14); add(['nature/rock_tallC', 'nature/rock_tallD', 'nature/rock_largeC'], 36, 1.2, 2.8);
     add(['region/town-0', 'region/town-1', 'region/town-2'], 40); add(['region/forest-0', 'region/forest-1'], 50);
     add(['region/village-0', 'region/village-1', 'region/village-2'], 60);
-    add(['region/farm-0', 'region/farm-1'], 60); add(['region/hamlet-0', 'region/hamlet-1', 'region/hamlet-2'], 120);
+    add(['region/farm-0', 'region/farm-1'], 40); add(['region/hamlet-0', 'region/hamlet-1', 'region/hamlet-2'], 120);
     add(['region/grove-0', 'region/grove-1'], 150);
-    for (let k = 0; k < 220; k++) { const at = place(0.5); if (at) props.push({ model: pick(HOUSES), x: at[0], z: at[1], rot: spin(), s: K * 1.25, rf: 0.34 }); }
+    for (let k = 0; k < 240; k++) { const at = place(0.5); if (at) props.push({ model: pick(HOUSES), x: at[0], z: at[1], rot: spin(), s: K * 3, rf: 0.34 }); }
     for (let k = 0; k < 320; k++) { const at = place(0.4); if (at) props.push({ model: pick(TREES), x: at[0], z: at[1], rot: spin(), s: range(0.07, 0.11), rf: 0.3 }); }
     return {
-      kind: 'ground', rnd, bound, xp: 0.75, props, ground,
+      kind: 'ground', rnd, bound, xp: 0.6, props, ground,
       baseColor: new THREE.Color(0.2, 0.52, 0.27),
       sky: { color: 0xa9dcff, fog: [320, 900] },
     };
@@ -585,7 +586,7 @@ const galaxy = {
       }
     }
     return {
-      kind: 'space', rnd, bound, xp: 0.9, props,
+      kind: 'space', rnd, bound, xp: 0.8, props,
       sky: { color: 0x000004, bg: assets.sky, bgIntensity: 2.2, fog: null },
     };
   },
@@ -610,7 +611,7 @@ const cosmos = {
     add(3, 9, 10.6, true); add(6, 6.5, 8.4, true); add(12, 4.2, 6.2, true); add(26, 2.5, 4, true);
     add(44, 1.5, 2.4, true); add(70, 0.9, 1.4, false); add(130, 0.55, 0.9, false); add(260, 0.3, 0.55, false);
     return {
-      kind: 'space', rnd, bound, xp: 0.9, props,
+      kind: 'space', rnd, bound, xp: 0.7, props,
       sky: { color: 0x010109, bg: assets.sky, bgIntensity: 0.5, fog: null },
     };
   },
@@ -634,7 +635,7 @@ const multiverse = {
     add(3, 9, 10.6, true); add(6, 6.5, 8.4, true); add(12, 4.2, 6.2, true); add(26, 2.5, 4, true);
     add(44, 1.5, 2.4, false); add(70, 0.9, 1.4, false); add(130, 0.55, 0.9, false); add(260, 0.3, 0.55, false);
     return {
-      kind: 'space', rnd, bound, xp: 0.9, props,
+      kind: 'space', rnd, bound, xp: 0.7, props,
       sky: { color: 0x0b0318, bg: null, fog: null },
     };
   },

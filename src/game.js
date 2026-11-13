@@ -445,6 +445,8 @@ export class Game {
 
   addScore(h, pts, o) {
     h.score += pts; h.xp += pts; h.eaten++;
+    // Rivals may get ahead of the player, but only by a few levels: no runaway giants.
+    if (!h.isPlayer && this.mode === 'playing') h.xp = Math.min(h.xp, this.xpFor(Math.min(MAX_LEVEL, this.player.level + 3)) + 1);
     const before = h.level;
     this.setLevel(h);
     if (h.level > before) { h.flash = 1; if (h.isPlayer) this.on.sizeUp(h); }

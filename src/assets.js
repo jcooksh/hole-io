@@ -122,8 +122,9 @@ export const PACKS = {
 // simple blocks for skylines seen from far away, and rocks for mountains and asteroids
 PACKS.region = {
   models: {
-    commercial: [...'abcdefghijklmn'].map((c) => `low-detail-building-${c}`).concat(['low-detail-building-wide-a', 'low-detail-building-wide-b']),
+    commercial: [...'cdefkn'].map((c) => `low-detail-building-${c}`),
     nature: ['rock_tallA', 'rock_tallB', 'rock_tallC', 'rock_tallD', 'rock_largeB', 'rock_largeC', 'stone_tallA', 'stone_largeA'],
+    hexagon: ['unit-house', 'unit-mansion', 'unit-tree'],
   },
 };
 // ships, plus landmark scans from Wikimedia Commons (see CREDITS.md)

@@ -139,12 +139,11 @@ button { touch-action: manipulation; }
 #feed b { color: var(--c); font-weight: 700; }
 @keyframes feed { 0%, 80% { opacity: 1; } 100% { opacity: 0; } }
 
-#mute, #assetCredits {
+#mute {
   flex: none; pointer-events: auto;
   font: 11px var(--display); letter-spacing: 0.05em; color: #fff;
   padding: 9px 12px 7px; border: 0; border-radius: 999px; background: var(--panel); cursor: pointer;
 }
-#assetCredits { display: inline-flex; align-items: center; margin-left: auto; font-family: var(--body); }
 #mute:hover { background: rgba(16, 26, 40, 0.9); }
 
 #stick {
@@ -274,7 +273,7 @@ button:focus-visible { outline: 3px solid var(--sun); outline-offset: 3px; }
   }
 }
 @media (pointer: coarse) {
-  #mute, #assetCredits { min-height: 44px; }
+  #mute { min-height: 44px; }
   .how-desktop { display: none; }
   .how-touch { display: inline; }
 }

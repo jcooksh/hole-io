@@ -267,7 +267,6 @@ function enterStage(index, playerName, carry) {
   clearStick(); input.keys.clear(); input.useKeys = false;
   $('stageNo').textContent = `Stage ${index + 1} / ${STAGES.length}`;
   $('stageName').textContent = game.stage.name;
-  $('assetCredits').hidden = index < 2;
   updateCamera(0);
   // fetch the next world in the background so the hand-over is instant
   if (playerName && index + 1 < STAGES.length) prepareStage(assets, index + 1, { theme: run.theme }).catch(() => {});

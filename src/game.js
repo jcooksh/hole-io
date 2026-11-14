@@ -250,6 +250,7 @@ export class Game {
     // How much there is to eat decides how fast levels come.
     this.xpScale = stage.xp || 1;
     this.starveT = 3;
+    this.safeT = playerName ? 6 : 0;      // nobody can swallow the player right after arriving
 
     // holes: slot 0 is the player (absent while the menu is showing)
     const names = BOT_NAMES.slice().sort(() => rnd() - 0.5);
@@ -264,7 +265,7 @@ export class Game {
     if (carry) { this.player.score = carry.score; this.player.eaten = carry.eaten; }
     for (const h of this.holes) {
       // later stages start with a couple of rivals that already have a head start
-      if (!h.isPlayer && stageIndex > 0) h.xp = Math.floor(LEVEL_XP[Math.floor(rnd() * 3)] * this.xpScale);
+      if (!h.isPlayer && stageIndex > 0) h.xp = Math.floor(LEVEL_XP[Math.floor(rnd() * 2)] * this.xpScale);
       this.placeHole(h);
     }
     if (stage.start && playerName) { this.player.x = stage.start[0]; this.player.z = stage.start[1]; }
@@ -425,7 +426,8 @@ export class Game {
     h.ring.scale.set(rr, 1, rr);
     const u = h.ring.material.uniforms;
     u.uProgress.value = h.isPlayer ? this.progress(h) : 0;
-    u.uFlash.value = h.flash;
+    // the ring blinks while the player is still protected
+    u.uFlash.value = h.isPlayer && this.safeT > 0 && this.mode === 'playing' ? Math.max(h.flash, 0.3 + 0.3 * Math.sin(this.clock * 12)) : h.flash;
     u.uOuter.value = 1.2 + 0.24 / r;      // keep the player's ring readable while the hole is still tiny
   }
 
@@ -730,7 +732,7 @@ export class Game {
     for (const a of hs) {
       if (!a.alive) continue;
       for (const b of hs) {
-        if (a === b || !b.alive || a.r < b.r * 1.12) continue;
+        if (a === b || !b.alive || a.r < b.r * 1.12 || (b.isPlayer && this.safeT > 0)) continue;
         this.sep(a.x, a.z, b.x, b.z);
         if (Math.hypot(_dx, _dz) < a.r - b.r * 0.35) {
           const loot = Math.floor(b.xp * 0.4) + 10;
@@ -841,6 +843,7 @@ export class Game {
       this.syncHole(h);
     }
     if (this.mode === 'playing' || this.mode === 'idle') this.eatHoles();
+    if (this.safeT > 0) this.safeT -= dt;
     if (this.mode === 'playing' && (this.starveT -= dt) <= 0) { this.starveT = 3; this.starveCheck(); }
     this.updateLeaning(dt);
     this.updateFalling(dt);
